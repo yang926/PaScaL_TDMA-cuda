@@ -1,0 +1,16 @@
+&meshes
+nx = 128
+ny = 64
+nz = 32
+/
+
+&procs
+npx = 1
+npy = 2
+npz = 1
+/
+
+&time
+Tmax = 2
+/
+
