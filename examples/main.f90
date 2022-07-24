@@ -35,7 +35,7 @@ program main
  
     integer :: nprocs, myrank   ! Number of MPI processes and rank ID in MPI_COMM_WORLD
     integer :: ierr, pvd
-    integer :: istat, nDevices, GPUrank=0;
+    integer :: istat, nDevices, GPUrank=0
     double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved
     
     call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)

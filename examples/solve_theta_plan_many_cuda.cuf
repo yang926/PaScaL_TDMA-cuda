@@ -52,6 +52,7 @@ contains
         integer :: myrank, ierr, request(12), istat
         integer :: time_step        ! Current time step
         double precision :: t_curr  ! Current simulation time
+        real(8) :: timer_a, timer_b, timer_total_TDMA=0.0
     
         ! Temporary variables for coefficient computations
         double precision :: Ct_half_over_dx, Ct_half_over_dy, Ct_half_over_dz
@@ -186,7 +187,18 @@ contains
             call build_LHSy_cuda<<<blocks, threads>>>(ap_ptr, am_ptr, ac_ptr, ad_ptr, rhs_d, dmy_sub_d, jpbc_index_d, jmbc_index_d, nx_sub, ny_sub, nz_sub, Ct_half_over_dy, dt)
 
             ! Solve the tridiagonal systems under the defined plan.
+            ! Test area of Pascal_TDMA_many_solve_cuda
+            ierr = cudaDeviceSynchronize()
+            timer_a=mpi_wtime()
+
             call PaScaL_TDMA_many_solve_cuda(py_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, nx_sub-1, ny_sub-1, nz_sub-1)
+            ierr = cudaDeviceSynchronize()
+            timer_b=mpi_wtime()
+
+            if(time_step.ge.2) then 
+                ! if(myrank==0) write(*,*) "Total Time", timer_b-timer_a
+                timer_total_TDMA=timer_total_TDMA*dble(time_step-2)/dble(time_step-1)+(timer_b-timer_a)/dble(time_step-1)
+            endif
 
             ! Return the solution to the r.h.s. plane-by-plane.
             call transpose_ikj2ijk<<<blocks, threads>>>(ad_ptr, rhs_d, nx_sub, ny_sub, nz_sub)
@@ -203,9 +215,8 @@ contains
             call build_LHSx_cuda<<<blocks, threads>>>(ap_ptr, am_ptr, ac_ptr, ad_ptr, rhs_d, dmx_sub_d, nx_sub, ny_sub, nz_sub, Ct_half_over_dx, dt)
 
             ! Solve the tridiagonal systems under the defined plan with periodic boundary conditions.
-            ierr = cudaDeviceSynchronize()
             call PaScaL_TDMA_many_solve_cycle_cuda(px_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, ny_sub-1, nx_sub-1, nz_sub-1)
-            ierr = cudaDeviceSynchronize()
+
 
             ! Return the solution to theta plane-by-plane.
             call update_theta_cuda<<<blocks, threads>>>(ad_ptr, theta_d, nx_sub, ny_sub, nz_sub)
@@ -362,6 +373,8 @@ contains
             endif
 
         end do
+
+        if(myrank==0) write(*,*) "Averaged TDMA Time", timer_total_TDMA
 
         theta = theta_d
 
