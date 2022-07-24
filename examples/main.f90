@@ -27,6 +27,7 @@ program main
     use global
     use mpi_subdomain
     use mpi_topology
+    use cudafor
     ! use PaScaL_TDMA
     use solve_theta_cuda, only : solve_theta_plan_many_cuda
     
@@ -34,12 +35,17 @@ program main
  
     integer :: nprocs, myrank   ! Number of MPI processes and rank ID in MPI_COMM_WORLD
     integer :: ierr, pvd
+    integer :: istat, nDevices, GPUrank=0;
     double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved
     
     call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)
     call MPI_Comm_size( MPI_COMM_WORLD, nprocs, ierr)
     call MPI_Comm_rank( MPI_COMM_WORLD, myrank, ierr)
     
+    istat = cudaGetDeviceCount(nDevices)
+    if(myrank==0) write(*,*) "# of CPU and GPU check", nprocs, nDevices
+    istat = cudaSetDevice(myrank)
+
     if(myrank==0) write(*,*) '[Main] MPI mode = ', pvd
     if(myrank==0) write(*,*) '[Main] The main simulation starts! '
     ! Periodicity in the simulation domain
@@ -53,8 +59,8 @@ program main
 
     ! Divide the simulation domain into sub-domains.
     call mpi_subdomain_make(comm_1d_x%nprocs, comm_1d_x%myrank, &
-                                   comm_1d_y%nprocs, comm_1d_y%myrank, &
-                                   comm_1d_z%nprocs, comm_1d_z%myrank )
+                            comm_1d_y%nprocs, comm_1d_y%myrank, &
+                            comm_1d_z%nprocs, comm_1d_z%myrank )
 
     ! Make ghostcells as communication buffer using derived datatypes.
     call mpi_subdomain_make_ghostcell_ddtype()
@@ -87,7 +93,7 @@ program main
     if(myrank==0) write(*,*) '[Main] Solving the 3D heat equation complete! '
 
     ! Write the values of the field variable in an output file if required.
-    call field_file_write(myrank, nprocs, theta_sub)
+    !call field_file_write(myrank, nprocs, theta_sub)
     if(myrank==0) write(*,*) '[Main] Solutions have been written to files! '
    
     ! Deallocate the variables and clean the module variables.

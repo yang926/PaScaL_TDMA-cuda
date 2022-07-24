@@ -78,7 +78,7 @@ module global
         namelist /procs/ npx, npy, npz
         namelist /time/ tmax
 
-        open (unit = 1, file = "PARA_INPUT.inp")
+        open (unit = 1, file = "run/PARA_INPUT.inp")
             read (1, meshes)
             read (1, procs)
             read (1, time)

@@ -1,7 +1,7 @@
 &meshes
-nx = 128
-ny = 64
-nz = 32
+nx = 512
+ny = 512
+nz = 512
 /
 
 &procs
@@ -11,6 +11,6 @@ npz = 1
 /
 
 &time
-Tmax = 2
+Tmax = 10
 /
 

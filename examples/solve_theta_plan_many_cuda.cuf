@@ -40,6 +40,7 @@ contains
         use mpi_topology
         use PaScaL_TDMA_cuda
         use cudafor
+       ! use nvtx
 
         implicit none
 
@@ -48,7 +49,7 @@ contains
         type(ptdma_plan_many_cuda)  :: px_many, pz_many , py_many  ! Plan for many tridiagonal systems of equations
 
         integer :: i, j, k
-        integer :: myrank, ierr, request(12)
+        integer :: myrank, ierr, request(12), istat
         integer :: time_step        ! Current time step
         double precision :: t_curr  ! Current simulation time
     
@@ -202,7 +203,9 @@ contains
             call build_LHSx_cuda<<<blocks, threads>>>(ap_ptr, am_ptr, ac_ptr, ad_ptr, rhs_d, dmx_sub_d, nx_sub, ny_sub, nz_sub, Ct_half_over_dx, dt)
 
             ! Solve the tridiagonal systems under the defined plan with periodic boundary conditions.
+            ierr = cudaDeviceSynchronize()
             call PaScaL_TDMA_many_solve_cycle_cuda(px_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, ny_sub-1, nx_sub-1, nz_sub-1)
+            ierr = cudaDeviceSynchronize()
 
             ! Return the solution to theta plane-by-plane.
             call update_theta_cuda<<<blocks, threads>>>(ad_ptr, theta_d, nx_sub, ny_sub, nz_sub)
