@@ -6,11 +6,11 @@ nz = 512
 
 &procs
 npx = 1
-npy = 2
+npy = 1
 npz = 1
 /
 
 &time
-Tmax = 10
+Tmax = 11
 /
 

@@ -35,10 +35,11 @@ program main
  
     integer :: nprocs, myrank   ! Number of MPI processes and rank ID in MPI_COMM_WORLD
     integer :: ierr, pvd
-    integer :: istat, nDevices, GPUrank=0
+    integer :: istat, nDevices
     double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved
     
-    call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)
+    !call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)
+    call MPI_INIT(ierr)
     call MPI_Comm_size( MPI_COMM_WORLD, nprocs, ierr)
     call MPI_Comm_rank( MPI_COMM_WORLD, myrank, ierr)
     
@@ -46,7 +47,7 @@ program main
     if(myrank==0) write(*,*) "# of CPU and GPU check", nprocs, nDevices
     istat = cudaSetDevice(myrank)
 
-    if(myrank==0) write(*,*) '[Main] MPI mode = ', pvd
+    !if(myrank==0) write(*,*) '[Main] MPI mode = ', pvd
     if(myrank==0) write(*,*) '[Main] The main simulation starts! '
     ! Periodicity in the simulation domain
     period(0)=.true.; period(1)=.false.; period(2)=.true.
