@@ -52,7 +52,9 @@ contains
         integer :: myrank, ierr, request(12), istat
         integer :: time_step        ! Current time step
         double precision :: t_curr  ! Current simulation time
-        real(8) :: timer_a, timer_b, timer_total_TDMA=0.0
+        double precision :: time_a, time_b, time_t_TDMA=0.0d0
+        double precision :: time_1, time_2, time_3, time_4, time_5, time_6
+        double precision :: time_t_1, time_t_2, time_t_3, time_t_4, time_t_5, time_t_6
     
         ! Temporary variables for coefficient computations
         double precision :: Ct_half_over_dx, Ct_half_over_dy, Ct_half_over_dz
@@ -189,15 +191,22 @@ contains
             ! Solve the tridiagonal systems under the defined plan.
             ! Test area of Pascal_TDMA_many_solve_cuda
             ierr = cudaDeviceSynchronize()
-            timer_a=mpi_wtime()
+            time_a=mpi_wtime()
 
-            call PaScaL_TDMA_many_solve_cuda(py_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, nx_sub-1, ny_sub-1, nz_sub-1)
+            call PaScaL_TDMA_many_solve_cuda(py_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, nx_sub-1, ny_sub-1, nz_sub-1, time_1, time_2, time_3, time_4, time_5, time_6)
             ierr = cudaDeviceSynchronize()
-            timer_b=mpi_wtime()
+            time_b=mpi_wtime()
 
             if(time_step.ge.2) then 
-                ! if(myrank==0) write(*,*) "Total Time", timer_b-timer_a
-                timer_total_TDMA=timer_total_TDMA*dble(time_step-2)/dble(time_step-1)+(timer_b-timer_a)/dble(time_step-1)
+        ! if(myrank==0) write(*,*) "t Time", time_b-time_a
+                time_t_TDMA=time_t_TDMA*dble(time_step-2)/dble(time_step-1)+(time_b-time_a)/dble(time_step-1)
+
+                time_t_1=time_t_1*dble(time_step-2)/dble(time_step-1)+(time_1)/dble(time_step-1)
+                time_t_2=time_t_2*dble(time_step-2)/dble(time_step-1)+(time_2)/dble(time_step-1)
+                time_t_3=time_t_3*dble(time_step-2)/dble(time_step-1)+(time_3)/dble(time_step-1)
+                time_t_4=time_t_4*dble(time_step-2)/dble(time_step-1)+(time_4)/dble(time_step-1)
+                time_t_5=time_t_5*dble(time_step-2)/dble(time_step-1)+(time_5)/dble(time_step-1)
+                time_t_6=time_t_6*dble(time_step-2)/dble(time_step-1)+(time_6)/dble(time_step-1)
             endif
 
             ! Return the solution to the r.h.s. plane-by-plane.
@@ -374,7 +383,8 @@ contains
 
         end do
 
-        if(myrank==0) write(*,*) "Averaged TDMA Time", timer_total_TDMA
+        if(myrank==0) write(*,*) "Time", time_t_TDMA
+        if(myrank==0) write(*,'(1A15,6E15.5)') "Time_section", time_t_1, time_t_2, time_t_3, time_t_4, time_t_5, time_t_6
 
         theta = theta_d
 

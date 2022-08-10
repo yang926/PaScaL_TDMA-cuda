@@ -12,3 +12,4 @@ FC = mpif90
 
 #FLAG = -O2 -fPIC -fp-model=precise -xCORE-AVX512 -fopenmp
 FLAG = -O4 -fast -fPIC -mp:multicore -Mcuda -acc=gpu -ta=tesla -Minfo=accel -L/usr/local/cuda/lib64 -lnvToolsExt -DUSE_NVTX
+#FLAG = -O0 -g -fPIC -mp:multicore -Mcuda -acc=gpu -ta=tesla -Minfo=accel -L/usr/local/cuda/lib64 -lnvToolsExt -DUSE_NVTX

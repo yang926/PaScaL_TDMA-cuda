@@ -248,7 +248,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine PaScaL_TDMA_plan_many_destroy_cuda
 
-    subroutine PaScaL_TDMA_many_solve_cuda(plan, a_d, b_d, c_d, d_d, n_sys, n_row, n_blk)
+    subroutine PaScaL_TDMA_many_solve_cuda(plan, a_d, b_d, c_d, d_d, n_sys, n_row, n_blk, time_1, time_2, time_3, time_4, time_5, time_6)
 
         implicit none
 
@@ -265,9 +265,17 @@ module PaScaL_TDMA_cuda
         integer :: i,j,k
         integer :: myrank
 
-    !call nvtxStartRange("PASCAL-TDMA 1")
+        ! For wall clock check
+        double precision :: time_1, time_2, time_3, time_4, time_5, time_6
+        double precision :: time_1a, time_1b, time_2a, time_2b, time_3a, time_3b
+        double precision :: time_4a, time_4b, time_5a, time_5b, time_6a, time_6b
+
+        !call nvtxStartRange("PASCAL-TDMA 1")
+        time_1a=mpi_wtime()
+
         n_row_rt = plan%n_row_rt
         n_sys_rt = plan%n_sys_rt
+        
 
         ! Setting the thread and block
         block_in_x_pascal = n_sys/thread_in_x_pascal
@@ -291,17 +299,26 @@ module PaScaL_TDMA_cuda
             stop
         endif
 
+ 
         threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
         blocks  = dim3(block_in_x_pascal, block_in_y_pascal, 1)
-    !call nvtxEndRange
-    !call nvtxStartRange("PASCAL-TDMA 2")
+
+        time_1b=mpi_wtime()
+        time_1=time_1b-time_1a
+        !call nvtxEndRange
+        !call nvtxStartRange("PASCAL-TDMA 2")
+        time_2a=mpi_wtime()
 
         ! The modified Thomas algorithm
-        !call PaScaL_TDMA_many_modified_Thomas_nonbank_cuda<<<blocks, threads>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_row)
         call PaScaL_TDMA_many_modified_Thomas_cuda<<<blocks, threads, 9*share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_sys, n_row, n_blk)
         ! Transpose the reduced systems of equations for TDMA using MPI_Ialltoallw and DDTs.
-    !call nvtxEndRange
-    !call nvtxStartRange("PASCAL-TDMA 3")
+        ierr = cudaDeviceSynchronize()
+        time_2b=mpi_wtime()
+        time_2=time_2b-time_2a
+        !call nvtxEndRange
+        
+        !call nvtxStartRange("PASCAL-TDMA 3")
+        time_3a=mpi_wtime()
         if(plan%ptdma_nprocs.eq.1) then
             plan%a_rt_d = plan%a_rd_d
             plan%b_rt_d = plan%b_rd_d
@@ -315,17 +332,24 @@ module PaScaL_TDMA_cuda
             call alltoall_kforward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             ierr = cudaDeviceSynchronize()
         endif
-    !call nvtxEndRange
-    !call nvtxStartRange("PASCAL-TDMA 4")
+        time_3b=mpi_wtime()
+        time_3=time_3b-time_3a
+        !call nvtxEndRange
+
+        !call nvtxStartRange("PASCAL-TDMA 4")
+        time_4a=mpi_wtime()
         ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
         threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
         blocks  = dim3(block_rt_in_x_pascal, block_in_y_pascal, 1)
 
-        !call tdma_many_nonbank_cuda<<<blocks, threads>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d, n_row_rt)
         call tdma_many_cuda<<<blocks, threads, 6*share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d, n_sys_rt, n_row_rt, n_blk)
         ! Transpose the obtained solutions to original reduced forms using MPI_Ialltoallw and DDTs.
-    !call nvtxEndRange
-    !call nvtxStartRange("PASCAL-TDMA 5")
+        ierr = cudaDeviceSynchronize()
+        time_4b=mpi_wtime()
+        time_4=time_4b-time_4a
+        !call nvtxEndRange
+        !call nvtxStartRange("PASCAL-TDMA 5")
+        time_5a=mpi_wtime()
         if(plan%ptdma_nprocs.eq.1) then
             plan%d_rd_d = plan%d_rt_d
         else
@@ -333,14 +357,20 @@ module PaScaL_TDMA_cuda
            call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
            ierr = cudaDeviceSynchronize()
         endif
-    !call nvtxEndRange
-    !call nvtxStartRange("PASCAL-TDMA 6")
+        time_5b=mpi_wtime()
+        time_5=time_5b-time_5a
+        !call nvtxEndRange
+        !call nvtxStartRange("PASCAL-TDMA 6")
+        time_6a=mpi_wtime()
+
         ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
         threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
         blocks  = dim3(block_in_x_pascal, block_in_y_pascal, 1)
-        !call PaScaL_TDMA_many_update_solution_nonbank_cuda<<<blocks, threads>>>(a_d, c_d, d_d, plan%d_rd_d, n_row)
         call PaScaL_TDMA_many_update_solution_cuda<<<blocks, threads, 2*share_size_pascal>>>(a_d, c_d, d_d, plan%d_rd_d, n_sys, n_row, n_blk)
-    !call nvtxEndRange
+        ierr = cudaDeviceSynchronize()
+        time_6b=mpi_wtime()
+        time_6=time_6b-time_6a
+        !call nvtxEndRange
     end subroutine PaScaL_TDMA_many_solve_cuda
 
     subroutine PaScaL_TDMA_many_solve_cycle_cuda(plan, a_d, b_d, c_d, d_d, n_sys, n_row, n_blk)
