@@ -74,7 +74,7 @@ program main
     ! Setup the parameters in the sub-domain.
     call mpi_subdomain_indices(comm_1d_y%myrank, comm_1d_y%nprocs)            
     call mpi_subdomain_mesh(comm_1d_x%myrank,comm_1d_y%myrank,comm_1d_z%myrank, &
-                                   comm_1d_x%nprocs,comm_1d_y%nprocs,comm_1d_z%nprocs)
+                            comm_1d_x%nprocs,comm_1d_y%nprocs,comm_1d_z%nprocs)
 
     ! Initialize values in the simulation domain and boundary conditions.
     call mpi_subdomain_initialization(theta_sub,comm_1d_y%myrank, comm_1d_y%nprocs)

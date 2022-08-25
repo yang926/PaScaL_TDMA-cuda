@@ -176,6 +176,7 @@ module PaScaL_TDMA_cuda
         allocate( plan%sendbuf(n_sys*nr_rt/nprocs*n_blk))
         allocate( plan%recvbuf(n_sys*nr_rt/nprocs*n_blk))
 
+
         
         ! Building the DDTs.
         allocate(plan%ddtype_Fs(0:nprocs-1), plan%ddtype_Bs(0:nprocs-1))
@@ -416,8 +417,8 @@ module PaScaL_TDMA_cuda
         blocks  = dim3(block_in_x_pascal, block_in_y_pascal, 1)
 
         ! The modified Thomas algorithm
-        call PaScaL_TDMA_many_modified_Thomas_nonbank_cuda<<<blocks, threads>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_row)
-        !call PaScaL_TDMA_many_modified_Thomas_cuda<<<blocks, threads, 9*share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_sys, n_row, n_blk)
+        !call PaScaL_TDMA_many_modified_Thomas_nonbank_cuda<<<blocks, threads>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_row)
+        call PaScaL_TDMA_many_modified_Thomas_cuda<<<blocks, threads, 9*share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_sys, n_row, n_blk)
         ! Transpose the reduced systems of equations for TDMA using MPI_Ialltoallw and DDTs.
         if(plan%ptdma_nprocs.eq.1) then
             plan%a_rt_d = plan%a_rd_d
@@ -976,7 +977,7 @@ module PaScaL_TDMA_cuda
 
         ! Construct many reduced tridiagonal systems per each rank. Each process has two rows of reduced systems.
         a_rd(j,k,1) = a(j,k,1); a_rd(j,k,2) = a(j,k,n_row)
-        b_rd(j,k,1) = 1.0d0    ; b_rd(j,k,2) = 1.0d0
+        b_rd(j,k,1) = 1.0d0   ; b_rd(j,k,2) = 1.0d0
         c_rd(j,k,1) = c(j,k,1); c_rd(j,k,2) = c(j,k,n_row)
         d_rd(j,k,1) = d(j,k,1); d_rd(j,k,2) = d(j,k,n_row)
 

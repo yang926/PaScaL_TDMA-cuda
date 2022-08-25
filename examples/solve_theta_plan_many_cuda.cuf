@@ -152,6 +152,14 @@ contains
         allocate( ac_d((nx_sub-1)*(ny_sub-1)*(nz_sub-1)) )
         allocate( am_d((nx_sub-1)*(ny_sub-1)*(nz_sub-1)) )
         allocate( ad_d((nx_sub-1)*(ny_sub-1)*(nz_sub-1)) )
+
+        !$cuf kernel do <<< *,* >>>
+        do i = 1, (nx_sub-1)*(ny_sub-1)*(nz_sub-1)
+            am_d(i)=0.0d0
+            ac_d(i)=0.0d0
+            ap_d(i)=0.0d0
+            ad_d(i)=0.0d0
+        enddo
     
         theta_d = theta
 
@@ -170,15 +178,11 @@ contains
 
             ! Build a coefficient matrix for the tridiagonal systems into a 2D array.
             call build_LHSz_cuda<<<blocks, threads>>>(ap_ptr, am_ptr, ac_ptr, ad_ptr, rhs_d, dmz_sub_d, nx_sub, ny_sub, nz_sub, Ct_half_over_dz, dt)
-
             !Solve the tridiagonal systems under the defined plan with periodic boundary conditions.
             call PaScaL_TDMA_many_solve_cycle_cuda(pz_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, nx_sub-1, nz_sub-1, ny_sub-1)
-
             ! Return the solution to the r.h.s. plane-by-plane
             call transpose_ijk2ijk<<<blocks, threads>>>(ad_ptr, rhs_d, nx_sub, ny_sub, nz_sub)
-
             nullify( ap_ptr, ac_ptr, am_ptr, ad_ptr )
-
             ! solve in the y-direction.
             ap_ptr(1:nx_sub-1, 1:nz_sub-1, 1:ny_sub-1) => ap_d
             ac_ptr(1:nx_sub-1, 1:nz_sub-1, 1:ny_sub-1) => ac_d
@@ -231,7 +235,6 @@ contains
             call update_theta_cuda<<<blocks, threads>>>(ad_ptr, theta_d, nx_sub, ny_sub, nz_sub)
 
             nullify( ap_ptr, ac_ptr, am_ptr, ad_ptr )
-
             ! Update ghostcells from the solution.
             if(comm_1d_x%west_rank.ne.MPI_PROC_NULL) then
 
@@ -300,7 +303,6 @@ contains
 
                 sbuf_z1 = dbuf_z1
             endif
-
             call MPI_Isend(sbuf_x0, (ny_sub-1)*(nz_sub-1), MPI_DOUBLE_PRECISION, comm_1d_x%west_rank, 111, comm_1d_x%mpi_comm, request(1), ierr)
             call MPI_Irecv(rbuf_x0, (ny_sub-1)*(nz_sub-1), MPI_DOUBLE_PRECISION, comm_1d_x%west_rank, 222, comm_1d_x%mpi_comm, request(2), ierr)
             call MPI_Isend(sbuf_x1, (ny_sub-1)*(nz_sub-1), MPI_DOUBLE_PRECISION, comm_1d_x%east_rank, 222, comm_1d_x%mpi_comm, request(3), ierr)
@@ -314,7 +316,6 @@ contains
             call MPI_Irecv(rbuf_z1, (nx_sub-1)*(ny_sub-1), MPI_DOUBLE_PRECISION, comm_1d_z%east_rank, 111, comm_1d_z%mpi_comm, request(11), ierr)
             call MPI_Isend(sbuf_z1, (nx_sub-1)*(ny_sub-1), MPI_DOUBLE_PRECISION, comm_1d_z%east_rank, 222, comm_1d_z%mpi_comm, request(12), ierr)
             call MPI_Waitall(12, request, MPI_STATUSES_IGNORE, ierr)
-
             if(comm_1d_x%west_rank.ne.MPI_PROC_NULL) then
                 dbuf_x0 = rbuf_x0
 
@@ -382,12 +383,10 @@ contains
             endif
 
         end do
-
         if(myrank==0) write(*,*) "Time", time_t_TDMA
         if(myrank==0) write(*,'(1A15,6E15.5)') "Time_section", time_t_1, time_t_2, time_t_3, time_t_4, time_t_5, time_t_6
 
         theta = theta_d
-
         ! Destroy the PaScaL_TDMA plan for the tridiagonal systems.
         call PaScaL_TDMA_plan_many_destroy_cuda(pz_many,comm_1d_z%nprocs)
         call PaScaL_TDMA_plan_many_destroy_cuda(px_many,comm_1d_x%nprocs)

@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -J mpi_gpu_job
-#SBATCH -p cas_v100nv_8
+#SBATCH -p amd_a100_4
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=8
+#SBATCH --ntasks-per-node=4
 #SBATCH -o %x.o%j
 #SBATCH -e %x.e%j
 #SBATCH --time 00:30:00
@@ -10,7 +10,11 @@
 #SBATCH --comment inhouse     # See Application SBATCH options name table's
 
 module purge
-module load nvidia_hpc_sdk/21.5
+module load nvidia_hpc_sdk/21.9
 
-#mpirun -np 8 ./run/a.out
-srun  ./run/a.out
+make all
+
+cd run
+
+mpirun -np 4 ./a.out 
+#srun  ./a.out
