@@ -426,34 +426,12 @@ module PaScaL_TDMA_cuda
             plan%c_rt_d = plan%c_rd_d
             plan%d_rt_d = plan%d_rd_d
         else
-            plan%A_rd = plan%a_rd_d
-            plan%B_rd = plan%b_rd_d
-            plan%C_rd = plan%c_rd_d
-            plan%D_rd = plan%d_rd_d
             ierr = cudaDeviceSynchronize()
-            call MPI_Ialltoallw(plan%A_rd, plan%count_send, plan%displ_send, plan%ddtype_Fs, &
-                                plan%A_rt, plan%count_recv, plan%displ_recv, plan%ddtype_Bs, &
-                                plan%ptdma_world, request(1), ierr)
-            call MPI_Ialltoallw(plan%B_rd, plan%count_send, plan%displ_send, plan%ddtype_Fs, &
-                                plan%B_rt, plan%count_recv, plan%displ_recv, plan%ddtype_Bs, &
-                                plan%ptdma_world, request(2), ierr)
-            call MPI_Ialltoallw(plan%C_rd, plan%count_send, plan%displ_send, plan%ddtype_Fs, &
-                                plan%C_rt, plan%count_recv, plan%displ_recv, plan%ddtype_Bs, &
-                                plan%ptdma_world, request(3), ierr)
-            call MPI_Ialltoallw(plan%D_rd, plan%count_send, plan%displ_send, plan%ddtype_Fs, &
-                                plan%D_rt, plan%count_recv, plan%displ_recv, plan%ddtype_Bs, &
-                                plan%ptdma_world, request(4), ierr)
-            call MPI_Waitall(4, request, MPI_STATUSES_IGNORE, ierr)
+            call alltoall_kforward(plan%a_rd_d, plan%a_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
+            call alltoall_kforward(plan%b_rd_d, plan%b_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
+            call alltoall_kforward(plan%c_rd_d, plan%c_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
+            call alltoall_kforward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             ierr = cudaDeviceSynchronize()
-
-            plan%a_rt_d = plan%A_rt
-            plan%b_rt_d = plan%B_rt
-            plan%c_rt_d = plan%C_rt
-            plan%d_rt_d = plan%D_rt
-            ! call alltoall_kforward(plan%a_rd_d, plan%a_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs)
-            ! call alltoall_kforward(plan%b_rd_d, plan%b_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs)
-            ! call alltoall_kforward(plan%c_rd_d, plan%c_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs)
-            ! call alltoall_kforward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs)
         endif
 
         threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
@@ -466,14 +444,9 @@ module PaScaL_TDMA_cuda
         if(plan%ptdma_nprocs.eq.1) then
             plan%d_rd_d = plan%d_rt_d
         else
-            plan%D_rt = plan%d_rt_d
             ierr = cudaDeviceSynchronize()
-            call MPI_Ialltoallw(plan%D_rt, plan%count_recv, plan%displ_recv, plan%ddtype_Bs, &
-                                plan%D_rd, plan%count_send, plan%displ_send, plan%ddtype_Fs, &
-                                plan%ptdma_world, request(1), ierr)
-            call MPI_Waitall(1, request, MPI_STATUSES_IGNORE, ierr)
+            call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             ierr = cudaDeviceSynchronize()
-            plan%d_rd_d = plan%D_rd
         endif
 
         threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)

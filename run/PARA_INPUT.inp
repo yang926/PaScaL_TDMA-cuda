@@ -1,11 +1,11 @@
 &meshes
-nx = 512
-ny = 512
+nx = 1024
+ny = 1024
 nz = 512
 /
 
 &procs
-npx = 1
+npx = 2
 npy = 2
 npz = 1
 /
