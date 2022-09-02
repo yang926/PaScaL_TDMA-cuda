@@ -101,8 +101,9 @@ module PaScaL_TDMA_cuda
     
     end type ptdma_plan_many_cuda
 
-    integer, parameter, private :: thread_in_x_pascal = 32, thread_in_y_pascal = 16
-    integer, private :: block_in_x_pascal, block_rt_in_x_pascal, block_in_y_pascal, share_size_pascal = 8*(1+thread_in_x_pascal)*thread_in_y_pascal;
+    integer, parameter, private :: BLOCK_DIM_X_PASCAL = 32, BLOCK_DIM_Y_PASCAL = 16
+    integer, private :: block_in_x_pascal, block_in_y_pascal, block_rt_in_x_pascal, share_size_pascal = kind(0.0d0)*(1+BLOCK_DIM_X_PASCAL)*BLOCK_DIM_Y_PASCAL
+    
 
     public  :: PaScaL_TDMA_plan_many_create_cuda
     public  :: PaScaL_TDMA_plan_many_destroy_cuda
@@ -279,29 +280,29 @@ module PaScaL_TDMA_cuda
         
 
         ! Setting the thread and block
-        block_in_x_pascal = n_sys/thread_in_x_pascal
-        if(block_in_x_pascal.eq.0 .or. (mod(n_sys, thread_in_x_pascal).ne.0)) then
-            print '(a,i5,a,i5)', '[Error] n_sys should be a multiple of thread_in_x_pascal. thread_in_x_pascal = ',thread_in_x_pascal,', n_sys = ',n_sys
+        block_in_x_pascal = n_sys/BLOCK_DIM_X_PASCAL
+        if(block_in_x_pascal.eq.0 .or. (mod(n_sys, BLOCK_DIM_X_PASCAL).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_sys should be a multiple of BLOCK_DIM_X_PASCAL. BLOCK_DIM_X_PASCAL = ',BLOCK_DIM_X_PASCAL,', n_sys = ',n_sys
             call MPI_Finalize(ierr)
             stop
         endif
 
-        block_rt_in_x_pascal = n_sys_rt/thread_in_x_pascal
-        if(block_rt_in_x_pascal.eq.0 .or. (mod(n_sys_rt, thread_in_x_pascal).ne.0)) then
-            print '(a,i5,a,i5)', '[Error] n_sys_rt should be a multiple of thread_in_x_pascal. thread_in_x_pascal = ',thread_in_x_pascal,', n_sys_rt = ',n_sys_rt
+        block_rt_in_x_pascal = n_sys_rt/BLOCK_DIM_X_PASCAL
+        if(block_rt_in_x_pascal.eq.0 .or. (mod(n_sys_rt, BLOCK_DIM_X_PASCAL).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_sys_rt should be a multiple of BLOCK_DIM_X_PASCAL. BLOCK_DIM_X_PASCAL = ',BLOCK_DIM_X_PASCAL,', n_sys_rt = ',n_sys_rt
             call MPI_Finalize(ierr)
             stop
         endif
 
-        block_in_y_pascal = n_blk/thread_in_y_pascal
-        if(block_in_y_pascal.eq.0 .or. (mod(n_blk, thread_in_y_pascal).ne.0)) then
-            print '(a,i5,a,i5)', '[Error] n_blk should be a multiple of thread_in_y_pascal. thread_in_y_pascal = ',thread_in_y_pascal,', n_blk = ',n_blk
+        block_in_y_pascal = n_blk/BLOCK_DIM_Y_PASCAL
+        if(block_in_y_pascal.eq.0 .or. (mod(n_blk, BLOCK_DIM_Y_PASCAL).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_blk should be a multiple of BLOCK_DIM_Y_PASCAL. BLOCK_DIM_Y_PASCAL = ',BLOCK_DIM_Y_PASCAL,', n_blk = ',n_blk
             call MPI_Finalize(ierr)
             stop
         endif
 
  
-        threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
         blocks  = dim3(block_in_x_pascal, block_in_y_pascal, 1)
 
         time_1b=mpi_wtime()
@@ -326,12 +327,12 @@ module PaScaL_TDMA_cuda
             plan%c_rt_d = plan%c_rd_d
             plan%d_rt_d = plan%d_rd_d
         else
-            ierr = cudaDeviceSynchronize()
+            !ierr = cudaDeviceSynchronize()
             call alltoall_kforward(plan%a_rd_d, plan%a_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             call alltoall_kforward(plan%b_rd_d, plan%b_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             call alltoall_kforward(plan%c_rd_d, plan%c_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             call alltoall_kforward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
-            ierr = cudaDeviceSynchronize()
+           ! ierr = cudaDeviceSynchronize()
         endif
         time_3b=mpi_wtime()
         time_3=time_3b-time_3a
@@ -340,7 +341,7 @@ module PaScaL_TDMA_cuda
         !call nvtxStartRange("PASCAL-TDMA 4")
         time_4a=mpi_wtime()
         ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
-        threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
         blocks  = dim3(block_rt_in_x_pascal, block_in_y_pascal, 1)
 
         call tdma_many_cuda<<<blocks, threads, 6*share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d, n_sys_rt, n_row_rt, n_blk)
@@ -354,9 +355,9 @@ module PaScaL_TDMA_cuda
         if(plan%ptdma_nprocs.eq.1) then
             plan%d_rd_d = plan%d_rt_d
         else
-           ierr = cudaDeviceSynchronize()
+          ! ierr = cudaDeviceSynchronize()
            call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
-           ierr = cudaDeviceSynchronize()
+          ! ierr = cudaDeviceSynchronize()
         endif
         time_5b=mpi_wtime()
         time_5=time_5b-time_5a
@@ -365,7 +366,7 @@ module PaScaL_TDMA_cuda
         time_6a=mpi_wtime()
 
         ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
-        threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
         blocks  = dim3(block_in_x_pascal, block_in_y_pascal, 1)
         call PaScaL_TDMA_many_update_solution_cuda<<<blocks, threads, 2*share_size_pascal>>>(a_d, c_d, d_d, plan%d_rd_d, n_sys, n_row, n_blk)
         ierr = cudaDeviceSynchronize()
@@ -392,28 +393,28 @@ module PaScaL_TDMA_cuda
         n_sys_rt = plan%n_sys_rt
 
         ! Setting the thread and block
-        block_in_x_pascal = n_sys/thread_in_x_pascal
-        if(block_in_x_pascal.eq.0 .or. (mod(n_sys, thread_in_x_pascal).ne.0)) then
-            print '(a,i5,a,i5)', '[Error] n_sys should be a multiple of thread_in_x_pascal. thread_in_x_pascal = ',thread_in_x_pascal,', n_sys = ',n_sys
+        block_in_x_pascal = n_sys/BLOCK_DIM_X_PASCAL
+        if(block_in_x_pascal.eq.0 .or. (mod(n_sys, BLOCK_DIM_X_PASCAL).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_sys should be a multiple of BLOCK_DIM_X_PASCAL. BLOCK_DIM_X_PASCAL = ',BLOCK_DIM_X_PASCAL,', n_sys = ',n_sys
             call MPI_Finalize(ierr)
             stop
         endif
 
-        block_rt_in_x_pascal = n_sys_rt/thread_in_x_pascal
-        if(block_rt_in_x_pascal.eq.0 .or. (mod(n_sys_rt, thread_in_x_pascal).ne.0)) then
-            print '(a,i5,a,i5)', '[Error] n_sys_rt should be a multiple of thread_in_x_pascal. thread_in_x_pascal = ',thread_in_x_pascal,', n_sys_rt = ',n_sys_rt
+        block_rt_in_x_pascal = n_sys_rt/BLOCK_DIM_X_PASCAL
+        if(block_rt_in_x_pascal.eq.0 .or. (mod(n_sys_rt, BLOCK_DIM_X_PASCAL).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_sys_rt should be a multiple of BLOCK_DIM_X_PASCAL. BLOCK_DIM_X_PASCAL = ',BLOCK_DIM_X_PASCAL,', n_sys_rt = ',n_sys_rt
             call MPI_Finalize(ierr)
             stop
         endif
 
-        block_in_y_pascal = n_blk/thread_in_y_pascal
-        if(block_in_y_pascal.eq.0 .or. (mod(n_blk, thread_in_y_pascal).ne.0)) then
-            print '(a,i5,a,i5)', '[Error] n_blk should be a multiple of thread_in_y_pascal. thread_in_y_pascal = ',thread_in_y_pascal,', n_blk = ',n_blk
+        block_in_y_pascal = n_blk/BLOCK_DIM_Y_PASCAL
+        if(block_in_y_pascal.eq.0 .or. (mod(n_blk, BLOCK_DIM_Y_PASCAL).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_blk should be a multiple of BLOCK_DIM_Y_PASCAL. BLOCK_DIM_Y_PASCAL = ',BLOCK_DIM_Y_PASCAL,', n_blk = ',n_blk
             call MPI_Finalize(ierr)
             stop
         endif
 
-        threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
         blocks  = dim3(block_in_x_pascal, block_in_y_pascal, 1)
 
         ! The modified Thomas algorithm
@@ -426,15 +427,15 @@ module PaScaL_TDMA_cuda
             plan%c_rt_d = plan%c_rd_d
             plan%d_rt_d = plan%d_rd_d
         else
-            ierr = cudaDeviceSynchronize()
+           ! ierr = cudaDeviceSynchronize()
             call alltoall_kforward(plan%a_rd_d, plan%a_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             call alltoall_kforward(plan%b_rd_d, plan%b_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             call alltoall_kforward(plan%c_rd_d, plan%c_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
             call alltoall_kforward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
-            ierr = cudaDeviceSynchronize()
+           ! ierr = cudaDeviceSynchronize()
         endif
 
-        threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
         blocks  = dim3(block_rt_in_x_pascal, block_in_y_pascal, 1)
 
         ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
@@ -444,12 +445,13 @@ module PaScaL_TDMA_cuda
         if(plan%ptdma_nprocs.eq.1) then
             plan%d_rd_d = plan%d_rt_d
         else
-            ierr = cudaDeviceSynchronize()
+
+           ! ierr = cudaDeviceSynchronize()
             call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf)
-            ierr = cudaDeviceSynchronize()
+           ! ierr = cudaDeviceSynchronize()
         endif
 
-        threads = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
         blocks  = dim3(block_in_x_pascal, block_in_y_pascal, 1)
         ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
         call PaScaL_TDMA_many_update_solution_nonbank_cuda<<<blocks, threads>>>(a_d, c_d, d_d, plan%d_rd_d, n_row)
@@ -789,6 +791,8 @@ module PaScaL_TDMA_cuda
         double precision, device :: recvbuf(n1*n3*n2)
 
         double precision :: temp
+
+        type(dim3) :: blocks, threads
         
         integer  :: mpi_comm
         integer  :: i,j,k,kblk,indexbuf
@@ -818,10 +822,22 @@ module PaScaL_TDMA_cuda
         enddo
         !$acc end parallel
 
+        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
+        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
+
+        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
+
+        ! !write(*,*) threads, blocks
+
+        ! call alltoall_kforward_detach<<<blocks, threads>>>(umpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
+
         !----- alltoall communication of sendbuf to recvbuf
+        ierr = cudaDeviceSynchronize()
         call MPI_ALLTOALL(sendbuf, nblksize, MPI_DOUBLE_PRECISION, &
                           recvbuf, nblksize, MPI_DOUBLE_PRECISION, &
                           mpi_comm, ierr)
+        ierr = cudaDeviceSynchronize()
 
         !$acc parallel loop collapse(4) private(kblk_block, i_block, j_block, indexbuf, temp)
         do kblk=1, nprocs
@@ -839,8 +855,69 @@ module PaScaL_TDMA_cuda
         enddo
         enddo
         !$acc end parallel
+
+        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
+        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
+
+        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
+
+        !call alltoall_kforward_unite<<<blocks, threads>>>(recvbuf, uimpi, n1blksize, n1, n2, n3, nprocs)
   
     end subroutine alltoall_kforward
+
+
+    attributes(global) subroutine alltoall_kforward_detach(umpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
+
+        implicit none
+
+        integer, value, intent(in)  :: n1, n2, n3, nprocs, n1blksize
+        double precision, device, intent(in) :: umpi(1:n1,1:n2,1:n3)
+        double precision, device, intent(out) :: sendbuf(n1*n3*n2)
+
+        integer :: i, j, k, kblk
+        integer :: kblk_block, i_block, j_block, indexbuf
+
+        i = (blockidx%x-1) * blockdim%x + threadidx%x
+        j = (blockidx%y-1) * blockdim%y + threadidx%y
+        k = (blockidx%z-1) * blockdim%z + threadidx%z
+
+        do kblk=1, nprocs
+            kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
+               i_block=(i   -1)            *(n2)*(n3)
+               j_block=(j   -1)                 *(n3)
+            
+            indexbuf = k+j_block+i_block+kblk_block
+            sendbuf(indexbuf)=umpi(i+(kblk-1)*n1blksize,j,k)
+        enddo
+
+    end subroutine alltoall_kforward_detach
+
+    attributes(global) subroutine alltoall_kforward_unite(recvbuf, uimpi, n1blksize, n1, n2, n3, nprocs)
+
+        implicit none
+
+        integer, value, intent(in)  :: n1, n2, n3, nprocs, n1blksize
+        double precision, device, intent(in) :: recvbuf(n1*n3*n2)
+        double precision, device, intent(out) :: uimpi(1:(n1/nprocs),1:n2,1:(n3*nprocs))
+
+        integer :: i, j, k, kblk
+        integer :: kblk_block, i_block, j_block, indexbuf
+
+        i = (blockidx%x-1) * blockdim%x + threadidx%x
+        j = (blockidx%y-1) * blockdim%y + threadidx%y
+        k = (blockidx%z-1) * blockdim%z + threadidx%z
+
+        do kblk=1, nprocs
+            kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
+               i_block=(i   -1)            *(n2)*(n3)
+               j_block=(j   -1)                 *(n3)
+
+            indexbuf = k+j_block+i_block+kblk_block
+            uimpi(i,j,k+(kblk-1)*(n3)) = recvbuf(indexbuf)
+        enddo
+
+    end subroutine alltoall_kforward_unite
 
     subroutine alltoall_kbackward(umpi, uimpi, n1, n2, n3, mpi_comm, nprocs, sendbuf, recvbuf)
         double precision, device ::  umpi(1:n1,1:n2,1:n3)
@@ -850,6 +927,8 @@ module PaScaL_TDMA_cuda
         double precision, device :: recvbuf(n1*n3*n2)
 
         double precision :: temp
+
+        type(dim3) :: blocks, threads
         
         integer  :: mpi_comm
         integer  :: i,j,k,kblk,indexbuf
@@ -879,10 +958,20 @@ module PaScaL_TDMA_cuda
         enddo
         !$acc end parallel
 
+        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
+        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
+
+        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
+
+        !call alltoall_kbackward_detach<<<blocks, threads>>>(uimpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
+
         !----- alltoall communication of sendbuf to recvbuf
+        ierr = cudaDeviceSynchronize()
         call MPI_ALLTOALL(sendbuf, nblksize, MPI_DOUBLE_PRECISION, &
                           recvbuf, nblksize, MPI_DOUBLE_PRECISION, &
                           mpi_comm, ierr)
+        ierr = cudaDeviceSynchronize()
 
         !$acc parallel loop collapse(4) private(kblk_block, i_block, j_block, indexbuf)
         do kblk=1, nprocs
@@ -900,8 +989,71 @@ module PaScaL_TDMA_cuda
         enddo
         enddo
         !$acc end parallel
+
+        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
+        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
+
+        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
+
+        !call alltoall_kbackward_unite<<<blocks, threads>>>(recvbuf, umpi, n1blksize, n1, n2, n3, nprocs)
+
   
     end subroutine alltoall_kbackward
+
+    attributes(global) subroutine alltoall_kbackward_detach(uimpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
+
+        implicit none
+
+        integer, value, intent(in)  :: n1, n2, n3, nprocs, n1blksize
+        double precision, device, intent(in) :: uimpi(1:(n1/nprocs),1:n2,1:(n3*nprocs))
+        double precision, device, intent(out) :: sendbuf(n1*n3*n2)
+
+        integer :: i, j, k, kblk
+        integer :: kblk_block, i_block, j_block, indexbuf
+
+        i = (blockidx%x-1) * blockdim%x + threadidx%x
+        j = (blockidx%y-1) * blockdim%y + threadidx%y
+        k = (blockidx%z-1) * blockdim%z + threadidx%z
+
+        do kblk=1, nprocs
+            kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
+               i_block=(i   -1)            *(n2)*(n3)
+               j_block=(j   -1)                 *(n3)
+
+            indexbuf = k+j_block+i_block+kblk_block
+
+            sendbuf(indexbuf)= uimpi(i,j,k+(kblk-1)*(n3))
+        enddo
+
+    end subroutine alltoall_kbackward_detach
+
+    attributes(global) subroutine alltoall_kbackward_unite(recvbuf, umpi, n1blksize, n1, n2, n3, nprocs)
+
+        implicit none
+
+        integer, value, intent(in)  :: n1, n2, n3, nprocs, n1blksize
+        double precision, device, intent(in) :: recvbuf(n1*n3*n2)
+        double precision, device, intent(out) :: umpi(1:n1,1:n2,1:n3)
+
+        integer :: i, j, k, kblk
+        integer :: kblk_block, i_block, j_block, indexbuf
+
+        i = (blockidx%x-1) * blockdim%x + threadidx%x
+        j = (blockidx%y-1) * blockdim%y + threadidx%y
+        k = (blockidx%z-1) * blockdim%z + threadidx%z
+
+        do kblk=1, nprocs
+             kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
+                i_block=(i   -1)            *(n2)*(n3)
+                j_block=(j   -1)                 *(n3)
+
+            indexbuf = k+j_block+i_block+kblk_block
+
+            umpi(i+(kblk-1)*n1blksize,j,k)=recvbuf(indexbuf)
+        enddo
+
+    end subroutine alltoall_kbackward_unite
 
     attributes(global) subroutine PaScaL_TDMA_many_modified_Thomas_nonbank_cuda(a, b, c, d, a_rd, b_rd, c_rd, d_rd, n_row)
 

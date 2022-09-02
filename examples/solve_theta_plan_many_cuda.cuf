@@ -600,7 +600,7 @@ contains
         integer :: ti,tj,tk
         integer :: jep, jem
         double precision :: inv_dmy_sub_j, inv_dmy_sub_jp
-        double precision, shared    :: rhs_block(BLOCK_DIM_X+1, BLOCK_DIM_Y, BLOCK_DIM_Z)
+        double precision, shared    :: rhs_block(blockdim%x+1, blockdim%y, blockdim%z)
 
         i = (blockidx%x-1) * blockdim%x + threadidx%x
         j = (blockidx%y-1) * blockdim%y + threadidx%y

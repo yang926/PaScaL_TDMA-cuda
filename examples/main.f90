@@ -38,7 +38,9 @@ program main
     integer :: istat, nDevices
     double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved
     
-    !call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)
+    write(*,*) "START"
+
+!    call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)
     call MPI_INIT(ierr)
     call MPI_Comm_size( MPI_COMM_WORLD, nprocs, ierr)
     call MPI_Comm_rank( MPI_COMM_WORLD, myrank, ierr)
@@ -94,7 +96,7 @@ program main
     if(myrank==0) write(*,*) '[Main] Solving the 3D heat equation complete! '
 
     ! Write the values of the field variable in an output file if required.
-    !call field_file_write(myrank, nprocs, theta_sub)
+    call field_file_write(myrank, nprocs, theta_sub)
     if(myrank==0) write(*,*) '[Main] Solutions have been written to files! '
    
     ! Deallocate the variables and clean the module variables.

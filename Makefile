@@ -23,7 +23,10 @@ clean:
 	rm Output.*;
 
 exe:
-	CUDA_VISIBLE_DEVICES=0,1,2,3 mpirun -np 4 ./run/a.out
+#	CUDA_VISIBLE_DEVICES=0,1,2,3 mpirun -np 4 ./run/a.out
+#	srun --accel-bind=g -e --cpus-per-gpu=1 ./run/a.out
+#	srun ./run/a.out
+	mpirun -np 8 ./run/a.out
 
 #nvtx:
 #	CUDA_VISIBLE_DEVICES=0 nsys profile --stats=true --trace=nvtx,cuda --cuda-memory-usage=true  --force-overwrite true -o Output mpirun -np 1 ./a.out
