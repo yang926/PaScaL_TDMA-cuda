@@ -103,7 +103,7 @@ module PaScaL_TDMA_cuda
 
     integer, parameter, private :: BLOCK_DIM_X_PASCAL = 32, BLOCK_DIM_Y_PASCAL = 16
     integer, private :: block_in_x_pascal, block_in_y_pascal, block_rt_in_x_pascal, share_size_pascal = kind(0.0d0)*(1+BLOCK_DIM_X_PASCAL)*BLOCK_DIM_Y_PASCAL
-    
+    integer, private :: block_in_x_alltoall, block_in_y_alltoall
 
     public  :: PaScaL_TDMA_plan_many_create_cuda
     public  :: PaScaL_TDMA_plan_many_destroy_cuda
@@ -805,32 +805,13 @@ module PaScaL_TDMA_cuda
         ntotalsize = n1*n2*n3
         nblksize   = ntotalsize/nprocs
 
-        !$acc parallel loop collapse(4) private(kblk_block, i_block, j_block, indexbuf)
-        do kblk=1, nprocs
-        do i   =1, n1blksize
-        do j   =1, n2
-        do k   =1, n3
-            kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
-               i_block=(i   -1)            *(n2)*(n3)
-               j_block=(j   -1)                 *(n3)
-            
-            indexbuf = k+j_block+i_block+kblk_block
-            sendbuf(indexbuf)=umpi(i+(kblk-1)*n1blksize,j,k)
-        enddo
-        enddo
-        enddo
-        enddo
-        !$acc end parallel
+        block_in_x_alltoall=n1blksize/BLOCK_DIM_X_PASCAL
+        block_in_y_alltoall=n2/BLOCK_DIM_Y_PASCAL
 
-        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
-        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        blocks  = dim3(block_in_x_alltoall, block_in_y_alltoall, n3)
 
-        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
-        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
-
-        ! !write(*,*) threads, blocks
-
-        ! call alltoall_kforward_detach<<<blocks, threads>>>(umpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
+        call alltoall_kforward_detach<<<blocks, threads>>>(umpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
 
         !----- alltoall communication of sendbuf to recvbuf
         ierr = cudaDeviceSynchronize()
@@ -839,33 +820,63 @@ module PaScaL_TDMA_cuda
                           mpi_comm, ierr)
         ierr = cudaDeviceSynchronize()
 
-        !$acc parallel loop collapse(4) private(kblk_block, i_block, j_block, indexbuf, temp)
-        do kblk=1, nprocs
-        do i   =1, n1blksize
-        do j   =1, n2
-        do k   =1, n3
-            kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
-               i_block=(i   -1)            *(n2)*(n3)
-               j_block=(j   -1)                 *(n3)
+        block_in_x_alltoall=n1blksize/BLOCK_DIM_X_PASCAL
+        block_in_y_alltoall=n2/BLOCK_DIM_Y_PASCAL
 
-            indexbuf = k+j_block+i_block+kblk_block
-            uimpi(i,j,k+(kblk-1)*(n3)) = recvbuf(indexbuf)
-        enddo
-        enddo
-        enddo
-        enddo
-        !$acc end parallel
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        blocks  = dim3(block_in_x_alltoall, block_in_y_alltoall, n3)
 
-        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
-        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
-
-        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
-        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
-
-        !call alltoall_kforward_unite<<<blocks, threads>>>(recvbuf, uimpi, n1blksize, n1, n2, n3, nprocs)
+        call alltoall_kforward_unite<<<blocks, threads>>>(recvbuf, uimpi, n1blksize, n1, n2, n3, nprocs)
   
     end subroutine alltoall_kforward
 
+    subroutine alltoall_kbackward(umpi, uimpi, n1, n2, n3, mpi_comm, nprocs, sendbuf, recvbuf)
+        double precision, device ::  umpi(1:n1,1:n2,1:n3)
+        double precision, device :: uimpi(1:(n1/nprocs),1:n2,1:(n3*nprocs))
+  
+        double precision, device :: sendbuf(n1*n3*n2)
+        double precision, device :: recvbuf(n1*n3*n2)
+
+        double precision :: temp
+
+        type(dim3) :: blocks, threads
+        
+        integer  :: mpi_comm
+        integer  :: i,j,k,kblk,indexbuf
+        integer  :: n1, n2, n3, nprocs
+        integer  :: n1blksize, ntotalsize, nblksize
+        integer  :: request, ierr
+        integer  :: kblk_block, i_block, j_block
+  
+        n1blksize  = n1/nprocs
+        ntotalsize = n1*n2*n3
+        nblksize   = ntotalsize/nprocs
+
+        block_in_x_alltoall=n1blksize/BLOCK_DIM_X_PASCAL
+        block_in_y_alltoall=n2/BLOCK_DIM_Y_PASCAL
+
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        blocks  = dim3(block_in_x_alltoall, block_in_y_alltoall, n3)
+
+        call alltoall_kbackward_detach<<<blocks, threads>>>(uimpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
+
+        !----- alltoall communication of sendbuf to recvbuf
+        ierr = cudaDeviceSynchronize()
+        call MPI_ALLTOALL(sendbuf, nblksize, MPI_DOUBLE_PRECISION, &
+                          recvbuf, nblksize, MPI_DOUBLE_PRECISION, &
+                          mpi_comm, ierr)
+        ierr = cudaDeviceSynchronize()
+
+        block_in_x_alltoall=n1blksize/BLOCK_DIM_X_PASCAL
+        block_in_y_alltoall=n2/BLOCK_DIM_Y_PASCAL
+
+        threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
+        blocks  = dim3(block_in_x_alltoall, block_in_y_alltoall, n3)
+
+        call alltoall_kbackward_unite<<<blocks, threads>>>(recvbuf, umpi, n1blksize, n1, n2, n3, nprocs)
+
+  
+    end subroutine alltoall_kbackward
 
     attributes(global) subroutine alltoall_kforward_detach(umpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
 
@@ -918,88 +929,6 @@ module PaScaL_TDMA_cuda
         enddo
 
     end subroutine alltoall_kforward_unite
-
-    subroutine alltoall_kbackward(umpi, uimpi, n1, n2, n3, mpi_comm, nprocs, sendbuf, recvbuf)
-        double precision, device ::  umpi(1:n1,1:n2,1:n3)
-        double precision, device :: uimpi(1:(n1/nprocs),1:n2,1:(n3*nprocs))
-  
-        double precision, device :: sendbuf(n1*n3*n2)
-        double precision, device :: recvbuf(n1*n3*n2)
-
-        double precision :: temp
-
-        type(dim3) :: blocks, threads
-        
-        integer  :: mpi_comm
-        integer  :: i,j,k,kblk,indexbuf
-        integer  :: n1, n2, n3, nprocs
-        integer  :: n1blksize, ntotalsize, nblksize
-        integer  :: request, ierr
-        integer  :: kblk_block, i_block, j_block
-  
-        n1blksize  = n1/nprocs
-        ntotalsize = n1*n2*n3
-        nblksize   = ntotalsize/nprocs
-
-        !$acc parallel loop collapse(4) private(kblk_block, i_block, j_block, indexbuf, temp)
-        do kblk=1, nprocs
-        do i   =1, n1blksize
-        do j   =1, n2
-        do k   =1, n3
-            kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
-               i_block=(i   -1)            *(n2)*(n3)
-               j_block=(j   -1)                 *(n3)
-
-            indexbuf = k+j_block+i_block+kblk_block
-            sendbuf(indexbuf)= uimpi(i,j,k+(kblk-1)*(n3)) 
-        enddo
-        enddo
-        enddo
-        enddo
-        !$acc end parallel
-
-        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
-        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
-
-        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
-        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
-
-        !call alltoall_kbackward_detach<<<blocks, threads>>>(uimpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
-
-        !----- alltoall communication of sendbuf to recvbuf
-        ierr = cudaDeviceSynchronize()
-        call MPI_ALLTOALL(sendbuf, nblksize, MPI_DOUBLE_PRECISION, &
-                          recvbuf, nblksize, MPI_DOUBLE_PRECISION, &
-                          mpi_comm, ierr)
-        ierr = cudaDeviceSynchronize()
-
-        !$acc parallel loop collapse(4) private(kblk_block, i_block, j_block, indexbuf)
-        do kblk=1, nprocs
-        do i   =1, n1blksize
-        do j   =1, n2
-        do k   =1, n3
-            kblk_block=(kblk-1)*(n1blksize)*(n2)*(n3)
-               i_block=(i   -1)            *(n2)*(n3)
-               j_block=(j   -1)                 *(n3)
-            
-            indexbuf = k+j_block+i_block+kblk_block
-            umpi(i+(kblk-1)*n1blksize,j,k)=recvbuf(indexbuf)
-        enddo
-        enddo
-        enddo
-        enddo
-        !$acc end parallel
-
-        ! block_in_x_pascal=n1blksize/BLOCK_DIM_X_PASCAL
-        ! block_in_y_pascal=n2/BLOCK_DIM_Y_PASCAL
-
-        ! threads = dim3(BLOCK_DIM_X_PASCAL, BLOCK_DIM_Y_PASCAL, 1)
-        ! blocks  = dim3(block_in_x_pascal, block_in_y_pascal, n3)
-
-        !call alltoall_kbackward_unite<<<blocks, threads>>>(recvbuf, umpi, n1blksize, n1, n2, n3, nprocs)
-
-  
-    end subroutine alltoall_kbackward
 
     attributes(global) subroutine alltoall_kbackward_detach(uimpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
 
