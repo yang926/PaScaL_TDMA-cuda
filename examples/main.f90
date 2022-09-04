@@ -33,24 +33,24 @@ program main
     
     implicit none
  
-    integer :: nprocs, myrank   ! Number of MPI processes and rank ID in MPI_COMM_WORLD
+    integer :: nprocs, myrank, local_rank   ! Number of MPI processes and rank ID in MPI_COMM_WORLD
     integer :: ierr, pvd
     integer :: istat, nDevices
     double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved
     
-    write(*,*) "START"
 
 !    call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)
     call MPI_INIT(ierr)
     call MPI_Comm_size( MPI_COMM_WORLD, nprocs, ierr)
     call MPI_Comm_rank( MPI_COMM_WORLD, myrank, ierr)
     
-    istat = cudaGetDeviceCount(nDevices)
-    if(myrank==0) write(*,*) "# of CPU and GPU check", nprocs, nDevices
-    istat = cudaSetDevice(myrank)
+    istat = cudaGetDeviceCount(nDevices) ! Count only GPUs in single node
+    local_rank = mod(myrank,nDevices) ! and devide it for  GPU affinity.
+    istat = cudaSetDevice(local_rank)
+    write(*,*) "# of CPU and GPU check", myrank, local_rank
 
     !if(myrank==0) write(*,*) '[Main] MPI mode = ', pvd
-    if(myrank==0) write(*,*) '[Main] The main simulation starts! '
+    if(myrank==0) write(*,*) '[Main] The main simulation starts!'
     ! Periodicity in the simulation domain
     period(0)=.true.; period(1)=.false.; period(2)=.true.
     
@@ -86,7 +86,6 @@ program main
     call MPI_Barrier(MPI_COMM_WORLD,ierr)
 
     if(myrank==0) write(*,*) '[Main] The preparation for simulation finished! '
-
     if(myrank==0) write(*,*) '[Main] Solving the 3D heat equation! '
     
     ! call solve_theta_plan_many(theta_sub)
