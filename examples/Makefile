@@ -5,14 +5,14 @@ EXE = a.out
 INC = ../include
 LIB = ../lib -lpascal_tdma -ltimer
 
-nvtx = nvtx.o
+#nvtx = nvtx.o
 global = global.o
 topology = mpi_topology.o 
 subdomain = mpi_subdomain.o
 THETA = solve_theta_plan_many_cuda.o #solve_theta_plan_single.o  #solve_theta_plan_many.o #solve_theta_plan_many_thread_team.o 
 main = main.o
 
-OBJS   = $(nvtx) $(global) $(topology) $(subdomain) $(THETA) $(main)
+OBJS   =  $(global) $(topology) $(subdomain) $(THETA) $(main)
 
 
 all:$(OBJS)

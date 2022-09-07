@@ -30,6 +30,7 @@ program main
     use cudafor
     ! use PaScaL_TDMA
     use solve_theta_cuda, only : solve_theta_plan_many_cuda
+    use nvtx
     
     implicit none
  

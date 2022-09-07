@@ -4,11 +4,12 @@ LIB = libpascal_tdma.a
 
 OBJDIR = ./obj
 
+NVTX = $(OBJDIR)/nvtx.o
 TDMAS = $(OBJDIR)/tdmas_cuda.o #$(OBJDIR)/tdmas.o
 RANGE = $(OBJDIR)/para_range.o
 PTDMA = $(OBJDIR)/pascal_tdma_cuda.o #$(OBJDIR)/pascal_tdma.o 
 
-OBJS   = $(TDMAS) $(RANGE) $(PTDMA)
+OBJS   = $(NVTX) $(TDMAS) $(RANGE) $(PTDMA)
 
 all: $(LIB) inc
 

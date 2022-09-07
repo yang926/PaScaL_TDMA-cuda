@@ -1,16 +1,16 @@
 &meshes
-nx = 2048
-ny = 2048
-nz = 1024
+nx = 512
+ny = 512
+nz = 512
 /
 
 &procs
-npx = 4
-npy = 4
+npx = 2
+npy = 2
 npz = 2
 /
 
 &time
-Tmax = 11
+Tmax = 5
 /
 
