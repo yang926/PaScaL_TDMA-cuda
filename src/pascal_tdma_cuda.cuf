@@ -196,7 +196,7 @@ module PaScaL_TDMA_cuda
             stop
         endif
 
-        plan%threads         = dim3(  thread_in%x, thread_in%y, 1)
+        plan%threads         = dim3(         thread_in%x,        thread_in%y, 1)
         plan%blocks          = dim3(   block_in_x_pascal,  block_in_y_pascal, 1)
         plan%blocks_rt       = dim3(block_rt_in_x_pascal,  block_in_y_pascal, 1)
         plan%blocks_alltoall = dim3(block_rt_in_x_pascal,  block_in_y_pascal, nr_rd)
