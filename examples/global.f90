@@ -46,6 +46,9 @@ module global
     double precision :: dt                  !< Length of time step
     double precision :: dtStart             !< Initial dt
     double precision :: tStart              !< Initial simulation time
+
+    ! Thread for cuda
+    integer :: thread_in_x, thread_in_y, thread_in_z, thread_in_x_pascal, thread_in_y_pascal
     
     ! Physical size of the computational domain
     !> @{ Lengths of the physical domain
@@ -77,11 +80,13 @@ module global
         namelist /meshes/ nx, ny, nz
         namelist /procs/ npx, npy, npz
         namelist /time/ tmax
+        namelist /threads/ thread_in_x, thread_in_y, thread_in_z, thread_in_x_pascal, thread_in_y_pascal
 
         open (unit = 1, file = "run/PARA_INPUT.inp")
             read (1, meshes)
             read (1, procs)
             read (1, time)
+            read (1, threads)
         close (1)
 
         np_dim(0) = npx

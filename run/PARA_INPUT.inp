@@ -14,3 +14,10 @@ npz = 2
 Tmax = 5
 /
 
+&threads
+thread_in_x = 8
+thread_in_y = 4
+thread_in_z = 4
+thread_in_x_pascal = 32
+thread_in_y_pascal = 16
+/

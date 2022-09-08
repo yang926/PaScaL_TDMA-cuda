@@ -19,7 +19,7 @@
 !======================================================================================================================
 module solve_theta_cuda
 
-    integer, parameter, private :: BLOCK_DIM_X=4, BLOCK_DIM_Y=4, BLOCK_DIM_Z=4
+    !integer, parameter, private :: BLOCK_DIM_X=4, BLOCK_DIM_Y=4, blockdim%z=4
 
 contains
     !>
@@ -70,9 +70,9 @@ contains
         integer, device             :: jpbc_index_d(0:ny_sub), jmbc_index_d(0:ny_sub)
 
         ! Block and thread dimension
-        integer, parameter  :: thread_in_x = BLOCK_DIM_X, thread_in_y = BLOCK_DIM_Y, thread_in_z = BLOCK_DIM_Z
+        !integer, parameter  :: thread_in_x = BLOCK_DIM_X, thread_in_y = BLOCK_DIM_Y, thread_in_z = blockdim%z
         integer             :: block_in_x, block_in_y, block_in_z
-        type(dim3)          :: blocks, threads
+        type(dim3)          :: blocks, threads, threads_in_pascal
 
         ! Communication buffer
         double precision, allocatable, dimension(:,:), device   :: sbuf_x0(:,:), sbuf_x1(:,:), sbuf_y0(:,:), sbuf_y1(:,:), sbuf_z0(:,:), sbuf_z1(:,:)
@@ -135,16 +135,18 @@ contains
 
         threads = dim3(thread_in_x, thread_in_y, thread_in_z)
         blocks  = dim3(block_in_x, block_in_y, block_in_z)
+
+        threads_in_pascal = dim3(thread_in_x_pascal, thread_in_y_pascal, 1)
     
         ! Simulation begins
         t_curr = tStart
         dt = dtstart
 
         ! Create a PaScaL_TDMA plan for the tridiagonal systems.
-        call PaScaL_TDMA_plan_many_create_cuda(pz_many, nx_sub-1, nz_sub-1, ny_sub-1, comm_1d_z%myrank, comm_1d_z%nprocs, comm_1d_z%mpi_comm)
-        call PaScaL_TDMA_plan_many_create_cuda(py_many, nx_sub-1, ny_sub-1, nz_sub-1, comm_1d_y%myrank, comm_1d_y%nprocs, comm_1d_y%mpi_comm)
+        call PaScaL_TDMA_plan_many_create_cuda(pz_many, nx_sub-1, nz_sub-1, ny_sub-1, comm_1d_z%myrank, comm_1d_z%nprocs, comm_1d_z%mpi_comm, threads_in_pascal)
+        call PaScaL_TDMA_plan_many_create_cuda(py_many, nx_sub-1, ny_sub-1, nz_sub-1, comm_1d_y%myrank, comm_1d_y%nprocs, comm_1d_y%mpi_comm, threads_in_pascal)
        ! call TDMA_alltoall_plan_many_create_cuda(py_many, nx_sub-1, ny_sub-1, nz_sub-1, comm_1d_y%myrank, comm_1d_y%nprocs, comm_1d_y%mpi_comm)
-        call PaScaL_TDMA_plan_many_create_cuda(px_many, ny_sub-1, nx_sub-1, nz_sub-1, comm_1d_x%myrank, comm_1d_x%nprocs, comm_1d_x%mpi_comm)
+        call PaScaL_TDMA_plan_many_create_cuda(px_many, ny_sub-1, nx_sub-1, nz_sub-1, comm_1d_x%myrank, comm_1d_x%nprocs, comm_1d_x%mpi_comm, threads_in_pascal)
 
         allocate( ap_d((nx_sub-1)*(ny_sub-1)*(nz_sub-1)) )
         allocate( ac_d((nx_sub-1)*(ny_sub-1)*(nz_sub-1)) )
@@ -535,7 +537,7 @@ contains
         integer :: i,j,k
         integer :: ti,tj,tk
         double precision :: inv_dmz_sub_k, inv_dmz_sub_kp
-        double precision, shared    :: rhs_block(BLOCK_DIM_X+1, BLOCK_DIM_Y, BLOCK_DIM_Z)
+        !double precision, shared    :: rhs_block(blockdim%x+1, blockdim%y, blockdim%z)
 
         i = (blockidx%x-1) * blockdim%x + threadidx%x
         j = (blockidx%y-1) * blockdim%y + threadidx%y
@@ -545,8 +547,8 @@ contains
         tj = threadidx%y
         tk = threadidx%z
 
-        rhs_block(ti,tj,tk) = rhs_d(i,j,k) * dt
-        call syncthreads()
+        !rhs_block(ti,tj,tk) = rhs_d(i,j,k) * dt
+        !call syncthreads()
 
         inv_dmz_sub_k  = 1.0d0 / dmz_sub_d(k  )
         inv_dmz_sub_kp = 1.0d0 / dmz_sub_d(k+1)
@@ -554,7 +556,8 @@ contains
         ap_ptr(i,j,k) = -coefz*inv_dmz_sub_kp*dt
         am_ptr(i,j,k) = -coefz*inv_dmz_sub_k *dt
         ac_ptr(i,j,k) =  coefz*( inv_dmz_sub_kp + inv_dmz_sub_k )*dt + 1.d0
-        ad_ptr(i,j,k) = rhs_block(ti,tj,tk)
+        ! ad_ptr(i,j,k) = rhs_block(ti,tj,tk)
+        ad_ptr(i,j,k) = rhs_d(i,j,k) * dt
 
     end subroutine build_LHSz_cuda
 
@@ -574,7 +577,7 @@ contains
         integer :: ti,tj,tk
         integer :: jep, jem
         double precision :: inv_dmy_sub_j, inv_dmy_sub_jp
-        double precision, shared    :: rhs_block(blockdim%x+1, blockdim%y, blockdim%z)
+       !double precision, shared    :: rhs_block(blockdim%x+1, blockdim%y, blockdim%z)
 
         i = (blockidx%x-1) * blockdim%x + threadidx%x
         j = (blockidx%y-1) * blockdim%y + threadidx%y
@@ -584,7 +587,7 @@ contains
         tj = threadidx%y
         tk = threadidx%z
 
-        rhs_block(ti,tj,tk) = rhs_d(i,j,k)
+        !rhs_block(ti,tj,tk) = rhs_d(i,j,k)
         call syncthreads()
 
         inv_dmy_sub_j  = 1.0d0 / dmy_sub_d(j  )
@@ -596,7 +599,8 @@ contains
         ap_ptr(i,k,j) = -coefy*inv_dmy_sub_jp*dble(jep)*dt
         am_ptr(i,k,j) = -coefy*inv_dmy_sub_j *dble(jem)*dt
         ac_ptr(i,k,j) =  coefy*( inv_dmy_sub_jp + inv_dmy_sub_j )*dt + 1.d0
-        ad_ptr(i,k,j) = rhs_block(ti,tj,tk)
+        !ad_ptr(i,k,j) = rhs_block(ti,tj,tk)
+        ad_ptr(i,k,j) = rhs_d(i,j,k)
 
     end subroutine build_LHSy_cuda
 
