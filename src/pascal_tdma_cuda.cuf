@@ -325,7 +325,7 @@ module PaScaL_TDMA_cuda
         endif
 
         ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
-        call tdma_cycl_many_cuda<<<plan%blocks, plan%threads, 8*plan%share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d,plan%e_rt_d, n_sys_rt, n_row_rt, n_blk)
+        call tdma_cycl_many_cuda<<<plan%blocks_rt, plan%threads, 8*plan%share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d,plan%e_rt_d, n_sys_rt, n_row_rt, n_blk)
         
         ! Transpose the obtained solutions to original reduced forms using MPI_Ialltoallw and DDTs.
         if(plan%ptdma_nprocs.eq.1) then
