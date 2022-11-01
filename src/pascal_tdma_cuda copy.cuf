@@ -91,6 +91,25 @@ module PaScaL_TDMA_cuda
     
     end type ptdma_plan_many_cuda
 
+    type, public :: tdma_alltoall_plan_many_cuda
+
+        integer :: ptdma_world      !< Single dimensional subcommunicator to assemble data for the reduced TDMA
+        integer :: ptdma_nprocs     !< Size of ptdma_world
+        integer :: n_sys_rt         !< Number of tridiagonal systems that need to be solved in each process after transpose
+        integer :: n_row_rt         !< Number of rows of a reduced tridiagonal systems after transpose
+
+        double precision, allocatable, device, dimension(:,:,:) :: a_rd_d, b_rd_d, c_rd_d, d_rd_d
+
+        double precision, allocatable, device, dimension(:) :: sendbuf, recvbuf
+
+        type(dim3) :: threads, blocks, blocks_rt, blocks_alltoall
+
+        integer, private :: share_size_pascal
+
+
+    end type tdma_alltoall_plan_many_cuda
+
+
     public  :: PaScaL_TDMA_plan_many_create_cuda
     public  :: PaScaL_TDMA_plan_many_destroy_cuda
     public  :: PaScaL_TDMA_many_solve_cuda
@@ -150,15 +169,11 @@ module PaScaL_TDMA_cuda
         allocate( plan%c_rt_d(ns_rt, n_blk, nr_rt) )
         allocate( plan%d_rt_d(ns_rt, n_blk, nr_rt) )
         allocate( plan%e_rt_d(ns_rt, n_blk, nr_rt) )
-        plan%e_rt_d = 0.0d0
 
         allocate( plan%sendbuf(n_sys*nr_rt/nprocs*n_blk))
         allocate( plan%recvbuf(n_sys*nr_rt/nprocs*n_blk))
-    
+        
         plan%ptdma_nprocs = nprocs
-
-        allocate( plan%e_buff(n_sys, n_blk, n_row) )
-        plan%e_buff = 0.0d0
 
         ! Check the thread and block
         block_in_x_pascal = n_sys/thread_in%x
@@ -202,11 +217,9 @@ module PaScaL_TDMA_cuda
 
         deallocate( plan%sendbuf, plan%recvbuf )
 
-        deallocate( plan%e_buff ) 
-
     end subroutine PaScaL_TDMA_plan_many_destroy_cuda
 
-    subroutine PaScaL_TDMA_many_solve_cuda(plan, a_d, b_d, c_d, d_d, n_sys, n_row, n_blk, time_mpi, time_cal)
+    subroutine PaScaL_TDMA_many_solve_cuda(plan, a_d, b_d, c_d, d_d, n_sys, n_row, n_blk, time_1, time_2, time_3, time_4, time_5, time_6)
 
         implicit none
 
@@ -223,53 +236,60 @@ module PaScaL_TDMA_cuda
         integer :: myrank
 
         ! For wall clock check
-        double precision :: time_mpi, time_cal
-        double precision :: time_s  , time_e
+        double precision :: time_1, time_2, time_3, time_4, time_5, time_6
+        double precision :: time_1a, time_1b, time_2a, time_2b, time_3a, time_3b
+        double precision :: time_4a, time_4b, time_5a, time_5b, time_6a, time_6b
+
+        time_1a=mpi_wtime()
 
         n_row_rt = plan%n_row_rt
         n_sys_rt = plan%n_sys_rt
 
+        time_1b=mpi_wtime(); time_1=time_1b-time_1a
+
+        time_2a=mpi_wtime()
+        ! The modified Thomas algorithm
+        call PaScaL_TDMA_many_modified_Thomas_cuda<<<plan%blocks, plan%threads, 9*plan%share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_sys, n_row, n_blk)
+        
+        ierr = cudaDeviceSynchronize()
+        time_2b=mpi_wtime(); time_2=time_2b-time_2a
+
+        time_3a=mpi_wtime()
+        ! Transpose the reduced systems of equations for TDMA using MPI_Ialltoallw and DDTs.
         if(plan%ptdma_nprocs.eq.1) then
-            time_cal = 0.0d0
-            time_cal = 0.0d0
-            time_s=mpi_wtime()
-            call tdma_many_cuda<<<plan%blocks, plan%threads, 6*plan%share_size_pascal>>>(a_d, b_d, c_d, d_d, n_sys, n_row, n_blk)
-            time_e=mpi_wtime(); time_cal=time_cal+(time_e-time_s)
+            plan%a_rt_d = plan%a_rd_d
+            plan%b_rt_d = plan%b_rd_d
+            plan%c_rt_d = plan%c_rd_d
+            plan%d_rt_d = plan%d_rd_d
         else
-            time_mpi = 0.0d0
-            time_cal = 0.0d0
-
-            time_s=mpi_wtime()
-            ! Transpose the reduced systems of equations for TDMA using MPI_Ialltoallw and DDTs.
-            call PaScaL_TDMA_many_modified_Thomas_cuda<<<plan%blocks, plan%threads, 9*plan%share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_sys, n_row, n_blk, n_row_rt/plan%ptdma_nprocs)
-            ierr = cudaDeviceSynchronize()
-            time_e=mpi_wtime(); time_cal=time_cal+(time_e-time_s)
-
-            time_s=mpi_wtime()
             call alltoall_kforward(plan%a_rd_d, plan%a_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
             call alltoall_kforward(plan%b_rd_d, plan%b_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
             call alltoall_kforward(plan%c_rd_d, plan%c_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
             call alltoall_kforward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
-            ierr = cudaDeviceSynchronize()
-            time_e=mpi_wtime(); time_mpi=time_mpi+(time_e-time_s)
-    
-            time_s=mpi_wtime()
-            ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
-            call tdma_many_cuda<<<plan%blocks_rt, plan%threads, 6*plan%share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d, n_sys_rt, n_row_rt, n_blk)
-            ierr = cudaDeviceSynchronize()
-            time_e=mpi_wtime(); time_cal=time_cal+(time_e-time_s)
-
-            ! Transpose the obtained solutions to original reduced forms using MPI_Ialltoallw and DDTs.
-            time_s=mpi_wtime()
-            call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
-            time_e=mpi_wtime(); time_mpi=time_mpi+(time_e-time_s)
-
-            time_s=mpi_wtime()
-            ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
-            call PaScaL_TDMA_many_update_solution_cuda<<<plan%blocks, plan%threads, 2*plan%share_size_pascal>>>(a_d, c_d, d_d, plan%d_rd_d, n_sys, n_row, n_blk)
-            ierr = cudaDeviceSynchronize()
-            time_e=mpi_wtime(); time_cal=time_cal+(time_e-time_s)
         endif
+        ierr = cudaDeviceSynchronize()
+        time_3b=mpi_wtime(); time_3=time_3b-time_3a
+
+        time_4a=mpi_wtime()
+        ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
+        call tdma_many_cuda<<<plan%blocks_rt, plan%threads, 6*plan%share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d, n_sys_rt, n_row_rt, n_blk)
+        ierr = cudaDeviceSynchronize()
+        time_4b=mpi_wtime(); time_4=time_4b-time_4a
+
+        ! Transpose the obtained solutions to original reduced forms using MPI_Ialltoallw and DDTs.
+        time_5a=mpi_wtime()
+        if(plan%ptdma_nprocs.eq.1) then
+            plan%d_rd_d = plan%d_rt_d
+        else
+           call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
+        endif
+        time_5b=mpi_wtime(); time_5=time_5b-time_5a
+
+        time_6a=mpi_wtime()
+        ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
+        call PaScaL_TDMA_many_update_solution_cuda<<<plan%blocks, plan%threads, 2*plan%share_size_pascal>>>(a_d, c_d, d_d, plan%d_rd_d, n_sys, n_row, n_blk)
+        ierr = cudaDeviceSynchronize()
+        time_6b=mpi_wtime(); time_6=time_6b-time_6a
 
     end subroutine PaScaL_TDMA_many_solve_cuda
 
@@ -289,38 +309,45 @@ module PaScaL_TDMA_cuda
         n_row_rt = plan%n_row_rt
         n_sys_rt = plan%n_sys_rt
 
+        ! The modified Thomas algorithm
+        call PaScaL_TDMA_many_modified_Thomas_cuda<<<plan%blocks, plan%threads, 9*plan%share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_sys, n_row, n_blk)
+       
+        ! Transpose the reduced systems of equations for TDMA using MPI_Ialltoallw and DDTs.
         if(plan%ptdma_nprocs.eq.1) then
-            call tdma_cycl_many_cuda<<<plan%blocks, plan%threads, 8*plan%share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%e_buff, n_sys, n_row, n_blk)
+            plan%a_rt_d = plan%a_rd_d
+            plan%b_rt_d = plan%b_rd_d
+            plan%c_rt_d = plan%c_rd_d
+            plan%d_rt_d = plan%d_rd_d
         else
-            ! The modified Thomas algorithm
-            call PaScaL_TDMA_many_modified_Thomas_cuda<<<plan%blocks, plan%threads, 9*plan%share_size_pascal>>>(a_d, b_d, c_d, d_d, plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d, n_sys, n_row, n_blk, n_row_rt/plan%ptdma_nprocs)
- 
-            ! Transpose the reduced systems of equations for TDMA using MPI_Ialltoallw and DDTs.
             call alltoall_kforward(plan%a_rd_d, plan%a_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
             call alltoall_kforward(plan%b_rd_d, plan%b_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
             call alltoall_kforward(plan%c_rd_d, plan%c_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
             call alltoall_kforward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
-
-            ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
-            call tdma_cycl_many_cuda<<<plan%blocks_rt, plan%threads, 8*plan%share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d,plan%e_rt_d, n_sys_rt, n_row_rt, n_blk)
-
-            ! Transpose the obtained solutions to original reduced forms using MPI_Ialltoallw and DDTs.
-            call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
-
-            ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
-            call PaScaL_TDMA_many_update_solution_cuda<<<plan%blocks, plan%threads, 2*plan%share_size_pascal>>>(a_d, c_d, d_d, plan%d_rd_d, n_sys, n_row, n_blk)
         endif
+
+        ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
+        call tdma_cycl_many_cuda<<<plan%blocks_rt, plan%threads, 8*plan%share_size_pascal>>>(plan%a_rt_d,plan%b_rt_d,plan%c_rt_d,plan%d_rt_d,plan%e_rt_d, n_sys_rt, n_row_rt, n_blk)
+        
+        ! Transpose the obtained solutions to original reduced forms using MPI_Ialltoallw and DDTs.
+        if(plan%ptdma_nprocs.eq.1) then
+            plan%d_rd_d = plan%d_rt_d
+        else
+            call alltoall_kbackward(plan%d_rd_d, plan%d_rt_d, n_sys, n_blk, n_row_rt/plan%ptdma_nprocs, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
+        endif
+
+        ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
+        call PaScaL_TDMA_many_update_solution_cuda<<<plan%blocks, plan%threads, 2*plan%share_size_pascal>>>(a_d, c_d, d_d, plan%d_rd_d, n_sys, n_row, n_blk)
 
     end subroutine PaScaL_TDMA_many_solve_cycle_cuda
 
-    attributes(global) subroutine PaScaL_TDMA_many_modified_Thomas_cuda(a, b, c, d, a_rd, b_rd, c_rd, d_rd, n_sys, n_row, n_blk, nr_rd)
+    attributes(global) subroutine PaScaL_TDMA_many_modified_Thomas_cuda(a, b, c, d, a_rd, b_rd, c_rd, d_rd, n_sys, n_row, n_blk)
 
         implicit none
 
-        integer, value, intent(in)      :: n_sys, n_row, n_blk, nr_rd
+        integer, value, intent(in)      :: n_sys, n_row, n_blk
         double precision, device, intent(inout) :: a(n_sys,n_blk,n_row), c(n_sys,n_blk,n_row), d(n_sys,n_blk,n_row)
         double precision, device, intent(in)    :: b(n_sys,n_blk,n_row)
-        double precision, device, intent(inout)   :: a_rd(n_sys, n_blk, nr_rd), b_rd(n_sys, n_blk, nr_rd), c_rd(n_sys, n_blk, nr_rd), d_rd(n_sys, n_blk, nr_rd)
+        double precision, device, intent(inout)   :: a_rd(n_sys, n_blk, 2), b_rd(n_sys, n_blk, 2), c_rd(n_sys, n_blk, 2), d_rd(n_sys, n_blk, 2)
 
         ! Temporary variables for computation
         integer :: i, j, k
@@ -370,6 +397,7 @@ module PaScaL_TDMA_cuda
         a(j,k,2) = a1(tj,tk)
         c(j,k,2) = c1(tj,tk)
         d(j,k,2) = d1(tj,tk)
+
 
         do i=3, n_row
 
@@ -636,7 +664,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine tdma_cycl_many_cuda
 
-    subroutine alltoall_kforward (umpi, uimpi, n1, n2, n3, mpi_comm, nprocs, sendbuf, recvbuf, blocks, threads)
+    subroutine alltoall_kforward(umpi, uimpi, n1, n2, n3, mpi_comm, nprocs, sendbuf, recvbuf, blocks, threads)
         double precision, device, intent(in ) ::  umpi(1:n1,1:n2,1:n3)
         double precision, device, intent(out) :: uimpi(1:(n1/nprocs),1:n2,1:(n3*nprocs))
   
@@ -704,7 +732,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine alltoall_kbackward
 
-    attributes(global) subroutine alltoall_kforward_detach(umpi,   sendbuf, n1blksize, n1, n2, n3, nprocs)
+    attributes(global) subroutine alltoall_kforward_detach(umpi, sendbuf, n1blksize, n1, n2, n3, nprocs)
 
         implicit none
 
@@ -730,7 +758,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine alltoall_kforward_detach
 
-    attributes(global) subroutine alltoall_kforward_unite (recvbuf,  uimpi, n1blksize, n1, n2, n3, nprocs)
+    attributes(global) subroutine alltoall_kforward_unite(recvbuf, uimpi, n1blksize, n1, n2, n3, nprocs)
 
         implicit none
 
@@ -783,7 +811,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine alltoall_kbackward_detach
 
-    attributes(global) subroutine alltoall_kbackward_unite (recvbuf,  umpi, n1blksize, n1, n2, n3, nprocs)
+    attributes(global) subroutine alltoall_kbackward_unite(recvbuf, umpi, n1blksize, n1, n2, n3, nprocs)
 
         implicit none
 
@@ -809,5 +837,193 @@ module PaScaL_TDMA_cuda
         enddo
 
     end subroutine alltoall_kbackward_unite
+
+    subroutine TDMA_alltoall_plan_many_create_cuda(plan, n_sys, n_row, n_blk, myrank, nprocs, mpi_world, thread_in)
+
+        implicit none
+
+        type(tdma_alltoall_plan_many_cuda), intent(inout)  :: plan
+        type(dim3) :: thread_in
+        integer, intent(in)     :: n_row, n_sys
+        integer, intent(in)     :: n_blk
+        integer, intent(in)     :: myrank, nprocs, mpi_world
+        integer :: block_in_x_pascal, block_in_y_pascal, block_rt_in_x_pascal
+
+        integer :: i, ierr
+        integer :: ista, iend                               ! First and last indices of assigned range in many tridiagonal systems of equations 
+        integer :: bigsize(3), subsize(3), start(3)         ! Temporary variables of derived data type (DDT)
+        integer :: ns_rd, nr_rd                             ! Dimensions of many reduced tridiagonal systems
+        integer :: ns_rt, nr_rt                             ! Dimensions of many reduced tridiagonal systems after transpose
+        integer, allocatable, dimension(:):: ns_rt_array    ! Array specifying the number of tridiagonal systems for each process after transpose
+
+        ! Specify dimensions for reduced systems.
+        ns_rd = n_sys
+        nr_rd = n_row
+
+        ! Specify dimensions for reduced systems after transpose.
+        ! ns_rt         : divide the number of tridiagonal systems of equations per each process  
+        ! ns_rt_array   : save the ns_rt in ns_rt_array for defining the DDT
+        ! nr_rt         : dimensions of the reduced tridiagonal systems in the solving direction, nr_rd*nprocs
+        call para_range(1, ns_rd, nprocs, myrank, ista, iend)
+        ns_rt = iend - ista + 1
+        nr_rt = nr_rd*nprocs
+
+        ! Assign plan variables and allocate coefficient arrays.
+        plan%n_sys_rt = ns_rt
+        plan%n_row_rt = nr_rt
+        plan%ptdma_world = mpi_world
+
+        allocate( plan%a_rd_d(ns_rd/nprocs, n_blk, nr_rd*nprocs) )
+        allocate( plan%b_rd_d(ns_rd/nprocs, n_blk, nr_rd*nprocs) )
+        allocate( plan%c_rd_d(ns_rd/nprocs, n_blk, nr_rd*nprocs) )
+        allocate( plan%d_rd_d(ns_rd/nprocs, n_blk, nr_rd*nprocs) )
+
+        allocate( plan%sendbuf(ns_rd*nr_rd*n_blk))
+        allocate( plan%recvbuf(ns_rd*nr_rd*n_blk))
+
+        
+        plan%ptdma_nprocs = nprocs
+
+        ! Check the thread and block
+        block_in_x_pascal = n_sys/thread_in%x
+        if(block_in_x_pascal.eq.0 .or. (mod(n_sys, thread_in%x).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_sys should be a multiple of thread_in%x. thread_in%x = ',thread_in%x,', n_sys = ',n_sys
+            call MPI_Finalize(ierr)
+            stop
+        endif
+
+        block_rt_in_x_pascal = ns_rt/thread_in%x
+        if(block_rt_in_x_pascal.eq.0 .or. (mod(ns_rt, thread_in%x).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_sys_rt should be a multiple of thread_in%x. thread_in%x = ',thread_in%x,', n_sys_rt = ', ns_rt
+            call MPI_Finalize(ierr)
+            stop
+        endif
+
+        block_in_y_pascal = n_blk/thread_in%y
+        if(block_in_y_pascal.eq.0 .or. (mod(n_blk, thread_in%y).ne.0)) then
+            print '(a,i5,a,i5)', '[Error] n_blk should be a multiple of thread_in%y. thread_in%y = ',thread_in%y,', n_blk = ',n_blk
+            call MPI_Finalize(ierr)
+            stop
+        endif
+
+        plan%threads         = dim3(         thread_in%x,        thread_in%y, 1)
+        plan%blocks          = dim3(   block_in_x_pascal,  block_in_y_pascal, 1)
+        plan%blocks_rt       = dim3(block_rt_in_x_pascal,  block_in_y_pascal, 1)
+        plan%blocks_alltoall = dim3(block_in_x_pascal,  block_in_y_pascal, nr_rd)
+
+        plan%share_size_pascal = kind(0.0d0)*(1+thread_in%x)*thread_in%y
+
+
+    end subroutine TDMA_alltoall_plan_many_create_cuda
+
+    subroutine TDMA_alltoall_plan_many_destroy_cuda(plan,nprocs)
+        implicit none
+
+        type(tdma_alltoall_plan_many_cuda), intent(inout)  :: plan
+        integer :: i,nprocs,ierr
+
+        ! do i=0,nprocs-1
+        !     call MPI_TYPE_FREE(plan%ddtype_Fs(i), ierr)
+        !     call MPI_TYPE_FREE(plan%ddtype_Bs(i), ierr)
+        ! enddo
+
+        ! deallocate(plan%ddtype_Fs,  plan%ddtype_Bs)
+        ! deallocate(plan%count_send, plan%displ_send)
+        ! deallocate(plan%count_recv, plan%displ_recv)
+        ! deallocate(plan%A_rd, plan%B_rd, plan%C_rd, plan%D_rd)
+
+        deallocate(plan%a_rd_d, plan%b_rd_d, plan%c_rd_d, plan%d_rd_d)
+
+        deallocate( plan%sendbuf, plan%recvbuf )
+
+    end subroutine TDMA_alltoall_plan_many_destroy_cuda
+
+    subroutine TDMA_alltoall_many_solve_cuda(plan, a_d, b_d, c_d, d_d, n_sys, n_row, n_blk, time_1, time_2, time_3, time_4, time_5, time_6)
+
+        implicit none
+
+        type(tdma_alltoall_plan_many_cuda), intent(inout)   :: plan
+        integer, value, intent(in)                  :: n_sys, n_row, n_blk
+        double precision, device, intent(inout)     :: a_d(n_sys,n_blk,n_row), b_d(n_sys,n_blk,n_row)
+        double precision, device, intent(inout)     :: c_d(n_sys,n_blk,n_row), d_d(n_sys,n_blk,n_row)
+
+        ! Temporary variables for computation and parameters for MPI functions.
+        integer :: request(4),ierr
+        integer :: n_row_rt, n_sys_rt
+        type(dim3) :: blocks, threads
+
+        integer :: i,j,k
+        integer :: myrank
+
+        ! For wall clock check
+        double precision :: time_1, time_2, time_3, time_4, time_5, time_6
+        double precision :: time_1a, time_1b, time_2a, time_2b, time_3a, time_3b
+        double precision :: time_4a, time_4b, time_5a, time_5b, time_6a, time_6b
+
+        !call nvtxStartRange("PASCAL-TDMA 1")
+        time_1a=mpi_wtime()
+
+        n_row_rt = plan%n_row_rt
+        n_sys_rt = plan%n_sys_rt
+
+        time_1b=mpi_wtime(); time_1=time_1b-time_1a
+
+        time_1b=mpi_wtime()
+        time_1=time_1b-time_1a
+
+
+        time_2a=mpi_wtime()
+
+        time_2b=mpi_wtime()
+        time_2=time_2b-time_2a
+
+        time_3a=mpi_wtime()
+        if(plan%ptdma_nprocs.eq.1) then
+            plan%a_rd_d = a_d
+            plan%b_rd_d = b_d
+            plan%c_rd_d = c_d
+            plan%d_rd_d = d_d
+        else
+            call alltoall_kforward(a_d, plan%a_rd_d, n_sys, n_blk, n_row, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
+            call alltoall_kforward(b_d, plan%b_rd_d, n_sys, n_blk, n_row, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
+            call alltoall_kforward(c_d, plan%c_rd_d, n_sys, n_blk, n_row, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
+            call alltoall_kforward(d_d, plan%d_rd_d, n_sys, n_blk, n_row, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
+        endif
+       ! ierr = cudaDeviceSynchronize()
+        time_3b=mpi_wtime()
+        time_3=time_3b-time_3a
+        !call nvtxEndRange
+
+        !call nvtxStartRange("PASCAL-TDMA 4")
+        time_4a=mpi_wtime()
+        ! Solve the reduced tridiagonal systems of equations using Thomas algorithm.
+
+        call tdma_many_cuda<<<plan%blocks, plan%threads, 6*plan%share_size_pascal>>>(plan%a_rd_d,plan%b_rd_d,plan%c_rd_d,plan%d_rd_d, n_sys/plan%ptdma_nprocs, n_row*plan%ptdma_nprocs, n_blk)
+        ! Transpose the obtained solutions to original reduced forms using MPI_Ialltoallw and DDTs.
+        ierr = cudaDeviceSynchronize()
+        time_4b=mpi_wtime()
+        time_4=time_4b-time_4a
+        !call nvtxEndRange
+        !call nvtxStartRange("PASCAL-TDMA 5")
+        time_5a=mpi_wtime()
+        if(plan%ptdma_nprocs.eq.1) then
+            d_d = plan%d_rd_d
+        else
+           call alltoall_kbackward(d_d, plan%d_rd_d, n_sys, n_blk, n_row, plan%ptdma_world, plan%ptdma_nprocs, plan%sendbuf, plan%recvbuf, plan%blocks_alltoall, plan%threads)
+        endif
+        time_5b=mpi_wtime()
+        time_5=time_5b-time_5a
+        !call nvtxEndRange
+        !call nvtxStartRange("PASCAL-TDMA 6")
+        time_6a=mpi_wtime()
+
+        ! Update solutions of the modified tridiagonal system with the solutions of the reduced tridiagonal system.
+        !call PaScaL_TDMA_many_update_solution_cuda<<<blocks, threads, 2*share_size_pascal>>>(a_d, c_d, d_d, plan%d_rd_d, n_sys, n_row, n_blk)
+        !ierr = cudaDeviceSynchronize()
+        time_6b=mpi_wtime()
+        time_6=time_6b-time_6a
+        !call nvtxEndRange
+    end subroutine TDMA_alltoall_many_solve_cuda
+
 
 end module PaScaL_TDMA_cuda

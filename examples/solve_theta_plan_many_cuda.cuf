@@ -47,15 +47,14 @@ contains
         double precision, dimension(0:nx_sub, 0:ny_sub, 0:nz_sub), intent(inout) :: theta
 
         type(ptdma_plan_many_cuda)  :: px_many, pz_many, py_many  ! Plan for many tridiagonal systems of equations
-        ! type(tdma_alltoall_plan_many_cuda) :: py_many
+       ! type(tdma_alltoall_plan_many_cuda) :: py_many
 
         integer :: i, j, k
         integer :: myrank, ierr, request(12), istat
         integer :: time_step        ! Current time step
         double precision :: t_curr  ! Current simulation time
-        double precision :: time_a, time_b, time_t_TDMA=0.0d0
-        double precision :: time_1, time_2, time_3, time_4, time_5, time_6
-        double precision :: time_t_1, time_t_2, time_t_3, time_t_4, time_t_5, time_t_6
+        double precision :: time_cal, time_mpi
+        double precision :: time_cal_total=0.0d0, time_mpi_total=0.0d0
     
         ! Temporary variables for coefficient computations
         double precision :: Ct_half_over_dx, Ct_half_over_dy, Ct_half_over_dz
@@ -145,7 +144,7 @@ contains
         ! Create a PaScaL_TDMA plan for the tridiagonal systems.
         call PaScaL_TDMA_plan_many_create_cuda(pz_many, nx_sub-1, nz_sub-1, ny_sub-1, comm_1d_z%myrank, comm_1d_z%nprocs, comm_1d_z%mpi_comm, threads_in_pascal)
         call PaScaL_TDMA_plan_many_create_cuda(py_many, nx_sub-1, ny_sub-1, nz_sub-1, comm_1d_y%myrank, comm_1d_y%nprocs, comm_1d_y%mpi_comm, threads_in_pascal)
-       ! call TDMA_alltoall_plan_many_create_cuda(py_many, nx_sub-1, ny_sub-1, nz_sub-1, comm_1d_y%myrank, comm_1d_y%nprocs, comm_1d_y%mpi_comm)
+        !call TDMA_alltoall_plan_many_create_cuda(py_many, nx_sub-1, ny_sub-1, nz_sub-1, comm_1d_y%myrank, comm_1d_y%nprocs, comm_1d_y%mpi_comm, threads_in_pascal)
         call PaScaL_TDMA_plan_many_create_cuda(px_many, ny_sub-1, nx_sub-1, nz_sub-1, comm_1d_x%myrank, comm_1d_x%nprocs, comm_1d_x%mpi_comm, threads_in_pascal)
 
         allocate( ap_d((nx_sub-1)*(ny_sub-1)*(nz_sub-1)) )
@@ -195,23 +194,11 @@ contains
 
             ! Solve the tridiagonal systems under the defined plan.
             ! Test area of Pascal_TDMA_many_solve_cuda
-            ierr = cudaDeviceSynchronize()
-            time_a=mpi_wtime()
-
-            call PaScaL_TDMA_many_solve_cuda(py_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, nx_sub-1, ny_sub-1, nz_sub-1, time_1, time_2, time_3, time_4, time_5, time_6)
-            !call TDMA_alltoall_many_solve_cuda(py_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, nx_sub-1, ny_sub-1, nz_sub-1, time_1, time_2, time_3, time_4, time_5, time_6)
-            ierr = cudaDeviceSynchronize()
-            time_b=mpi_wtime()
-
+            call PaScaL_TDMA_many_solve_cuda(py_many, am_ptr, ac_ptr, ap_ptr, ad_ptr, nx_sub-1, ny_sub-1, nz_sub-1, time_mpi, time_cal)
+            
             if(time_step.ge.2) then 
-                time_t_TDMA=time_t_TDMA*dble(time_step-2)/dble(time_step-1)+(time_b-time_a)/dble(time_step-1)
-
-                time_t_1=time_t_1*dble(time_step-2)/dble(time_step-1)+(time_1)/dble(time_step-1)
-                time_t_2=time_t_2*dble(time_step-2)/dble(time_step-1)+(time_2)/dble(time_step-1)
-                time_t_3=time_t_3*dble(time_step-2)/dble(time_step-1)+(time_3)/dble(time_step-1)
-                time_t_4=time_t_4*dble(time_step-2)/dble(time_step-1)+(time_4)/dble(time_step-1)
-                time_t_5=time_t_5*dble(time_step-2)/dble(time_step-1)+(time_5)/dble(time_step-1)
-                time_t_6=time_t_6*dble(time_step-2)/dble(time_step-1)+(time_6)/dble(time_step-1)
+                time_cal_total=time_cal_total*dble(time_step-2)/dble(time_step-1)+(time_cal)/dble(time_step-1)
+                time_mpi_total=time_mpi_total*dble(time_step-2)/dble(time_step-1)+(time_mpi)/dble(time_step-1)
             endif
 
             ! Return the solution to the r.h.s. plane-by-plane.
@@ -241,15 +228,14 @@ contains
                                               , rbuf_x0, rbuf_x1, rbuf_y0, rbuf_y1, rbuf_z0, rbuf_z1)
 
         end do
-        if(myrank==0) write(*,*) "Time", time_t_TDMA
-        if(myrank==0) write(*,'(1A15,6E15.5)') "Time_section", time_t_1, time_t_2, time_t_3, time_t_4, time_t_5, time_t_6
+        if(myrank==0) write(*,'(1A15,3E15.5)') "Time_section", time_cal_total, time_mpi_total, time_cal_total+time_mpi_total
 
         theta = theta_d
         ! Destroy the PaScaL_TDMA plan for the tridiagonal systems.
         call PaScaL_TDMA_plan_many_destroy_cuda(pz_many,comm_1d_z%nprocs)
         call PaScaL_TDMA_plan_many_destroy_cuda(px_many,comm_1d_x%nprocs)
         call PaScaL_TDMA_plan_many_destroy_cuda(py_many,comm_1d_y%nprocs)
-       ! call TDMA_alltoall_plan_many_destroy_cuda(py_many,comm_1d_y%nprocs)
+        !call TDMA_alltoall_plan_many_destroy_cuda(py_many,comm_1d_y%nprocs)
 
         deallocate( ap_d, am_d, ac_d, ad_d )
         deallocate( rhs_d, theta_d )
