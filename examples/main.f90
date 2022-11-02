@@ -39,8 +39,6 @@ program main
     integer :: istat, nDevices
     double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved
     
-
-!    call MPI_Init_thread(MPI_THREAD_MULTIPLE, pvd, ierr)
     call MPI_INIT(ierr)
     call MPI_Comm_size( MPI_COMM_WORLD, nprocs, ierr)
     call MPI_Comm_rank( MPI_COMM_WORLD, myrank, ierr)
@@ -90,7 +88,6 @@ program main
     if(myrank==0) write(*,*) '[Main] Solving the 3D heat equation! '
     
     ! call solve_theta_plan_many(theta_sub)
-    ! call solve_theta_plan_many_thread_team(theta_sub)
      call solve_theta_plan_many_cuda(theta_sub)
  
     if(myrank==0) write(*,*) '[Main] Solving the 3D heat equation complete! '
