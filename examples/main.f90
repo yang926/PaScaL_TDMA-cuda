@@ -153,11 +153,11 @@ subroutine field_file_write(myrank, nprocs, theta_sub)
     write(myrank,*) 'zone t="',1,'"','i=',nx_sub-1,'j=',ny_sub-1,'k=',nz_sub-1
 
     do k=1,nz_sub-1
-        do j=1,ny_sub-1
-            do i=1,nx_sub-1
-                write(myrank,'(3D14.6,1E22.14)') X_sub(i), Y_sub(j), Z_sub(k), theta_sub(i,j,k)
-            enddo
-        enddo
+    do j=1,ny_sub-1
+    do i=1,nx_sub-1
+        write(myrank,'(3D14.6,1E22.14)') X_sub(i), Y_sub(j), Z_sub(k), theta_sub(i,j,k)
+    enddo
+    enddo
     enddo
 
     close(myrank)
