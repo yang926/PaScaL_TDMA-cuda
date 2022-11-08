@@ -42,7 +42,6 @@ contains
     end subroutine tdma_many_cuda
 
 
-
     !>
     !> @brief       Solve many cyclic tridiagonal systems of equations using the Thomas algorithm.
     !>              First index indicates the number of independent many tridiagonal systems to use vectorization.

@@ -53,11 +53,11 @@ contains
     
         ! Temporary variables for coefficient computations
         double precision :: Ct_half_over_dx, Ct_half_over_dy, Ct_half_over_dz
-        double precision, allocatable, dimension(:,:,:) :: rhs            ! r.h.s. array
+        double precision, allocatable        , dimension(:,:,:)         :: rhs            ! r.h.s. array
+        double precision, allocatable        , dimension(:,:,:), device :: theta_d, rhs_d                 ! r.h.s. array
 
-        double precision, allocatable, dimension(:, :, :), device   :: theta_d, rhs_d                   ! r.h.s. array
-        double precision, allocatable, target, dimension(:), device :: ap_d, am_d, ac_d, ad_d           ! Coefficient of tridiagonal matrix
-        double precision, pointer, dimension(:,:,:), device         :: ap_ptr, am_ptr, ac_ptr, ad_ptr   ! Coefficient of tridiagonal matrix
+        double precision, allocatable, target, dimension(:)    , device :: ap_d, am_d, ac_d, ad_d           ! Coefficient of tridiagonal matrix
+        double precision, pointer            , dimension(:,:,:), device :: ap_ptr, am_ptr, ac_ptr, ad_ptr   ! Coefficient of tridiagonal matrix
 
         double precision, device    :: dmz_sub_d(0:nz_sub), dmy_sub_d(0:ny_sub), dmx_sub_d(0:nx_sub)
         double precision, device    :: thetaBC3_sub_d(0:nx_sub, 0:nz_sub), thetaBC4_sub_d(0:nx_sub, 0:nz_sub)
@@ -86,8 +86,8 @@ contains
         thetaBC4_sub_d = thetaBC4_sub
 
         ! Calculating r.h.s.
-        allocate(   rhs_d(1:nx_sub-1, 1:ny_sub-1, 1:nz_sub-1))
-        allocate( theta_d(0:nx_sub  , 0:ny_sub  , 0:nz_sub  ))
+        allocate(   rhs_d(1:nx_sub-1, 1:ny_sub-1, 1:nz_sub-1));   rhs_d = 0.0d0
+        allocate( theta_d(0:nx_sub  , 0:ny_sub  , 0:nz_sub  )); theta_d = 0.0d0
 
         allocate( sbuf_x0(0:ny_sub,0:nz_sub), sbuf_x1(0:ny_sub,0:nz_sub) ); sbuf_x0 = 0.0d0; sbuf_x1 = 0.0d0
         allocate( sbuf_y0(0:nx_sub,0:nz_sub), sbuf_y1(0:nx_sub,0:nz_sub) ); sbuf_y0 = 0.0d0; sbuf_y1 = 0.0d0
@@ -418,11 +418,11 @@ contains
         j = (blockidx%y-1) * blockdim%y + threadidx%y
         k = (blockidx%z-1) * blockdim%z + threadidx%z
 
-        thetaijk = theta_d(i,  j,  k)
-        thetaip  = theta_d(i+1,j,  k)
-        thetaim  = theta_d(i-1,j,  k)
-        thetajp  = theta_d(i,  j+1,k)
-        thetajm  = theta_d(i,  j-1,k)
+        thetaijk = theta_d(i,  j,  k  )
+        thetaip  = theta_d(i+1,j,  k  )
+        thetaim  = theta_d(i-1,j,  k  )
+        thetajp  = theta_d(i,  j+1,k  )
+        thetajm  = theta_d(i,  j-1,k  )
         thetakp  = theta_d(i,  j,  k+1)
         thetakm  = theta_d(i,  j,  k-1)
 
@@ -535,7 +535,7 @@ contains
         ap_ptr(i,k,j) = -coefy*inv_dmy_sub_jp*dble(jep)*dt
         am_ptr(i,k,j) = -coefy*inv_dmy_sub_j *dble(jem)*dt
         ac_ptr(i,k,j) =  coefy*( inv_dmy_sub_jp + inv_dmy_sub_j )*dt + 1.0d0
-        ad_ptr(i,k,j) = rhs_d(i,j,k)
+        ad_ptr(i,k,j) =  rhs_d(i,j,k)
 
     end subroutine build_LHSy_cuda
 
@@ -563,7 +563,7 @@ contains
         ap_ptr(j,k,i) = -coefx*inv_dmx_sub_ip*dt
         am_ptr(j,k,i) = -coefx*inv_dmx_sub_i*dt
         ac_ptr(j,k,i) =  coefx*( inv_dmx_sub_ip + inv_dmx_sub_i )*dt + 1.0d0
-        ad_ptr(j,k,i) = rhs_d(i,j,k)
+        ad_ptr(j,k,i) =  rhs_d(i,j,k)
 
     end subroutine build_LHSx_cuda
 

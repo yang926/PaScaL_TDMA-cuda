@@ -44,12 +44,11 @@ program main
     call MPI_Comm_rank( MPI_COMM_WORLD, myrank, ierr)
     
     istat = cudaGetDeviceCount(nDevices) ! Count only GPUs in single node
-    local_rank = mod(myrank,nDevices) ! and devide it for  GPU affinity.
+    local_rank = mod(myrank,nDevices) ! and devide it for GPU affinity.
     istat = cudaSetDevice(local_rank)
-    write(*,*) "# of CPU and GPU check", myrank, local_rank
+    !write(*,*) "# of CPU and GPU check", myrank, local_rank
 
-    !if(myrank==0) write(*,*) '[Main] MPI mode = ', pvd
-    if(myrank==0) write(*,*) '[Main] The main simulation starts!'
+    if(myrank==0) write(*,*) '[Main] The main simulation starts! '
     ! Periodicity in the simulation domain
     period(0)=.true.; period(1)=.false.; period(2)=.true.
     
@@ -138,123 +137,125 @@ subroutine field_file_write(myrank, nprocs, theta_sub)
     integer :: i, j, k, ierr
     integer :: status(MPI_STATUS_SIZE)
 
-    ! Single task IO: each process writes to its own output file.
-    write (filename, '("mpi_Tfield_sub_af",5I1,".PLT" )' ) int(myrank/10000)-int(myrank/100000)*10 &
-                                                         &,int(myrank/1000 )-int(myrank/10000 )*10 &
-                                                         &,int(myrank/100  )-int(myrank/1000  )*10 &
-                                                         &,int(myrank/10   )-int(myrank/100   )*10 &
-                                                         &,int(myrank/1    )-int(myrank/10    )*10 
-    open(unit=myrank,file=filename)
+    ! ! Single task IO: each process writes to its own output file.
+    ! write (filename, '("mpi_Tfield_sub_af",5I1,".plt" )' ) int(myrank/10000)-int(myrank/100000)*10 &
+    !                                                      &,int(myrank/1000 )-int(myrank/10000 )*10 &
+    !                                                      &,int(myrank/100  )-int(myrank/1000  )*10 &
+    !                                                      &,int(myrank/10   )-int(myrank/100   )*10 &
+    !                                                      &,int(myrank/1    )-int(myrank/10    )*10 
+    ! open(unit=myrank,file=filename)
     
-    write(myrank,*) 'VARIABLES="X","Y","Z","THETA"'
-    write(myrank,*) 'zone t="',1,'"','i=',nx_sub-1,'j=',ny_sub-1,'k=',nz_sub-1
+    ! write(myrank,*) 'VARIABLES="X","Y","Z","THETA"'
+    ! write(myrank,*) 'zone t="',1,'"','i=',nx_sub-1,'j=',ny_sub-1,'k=',nz_sub-1
 
-    do k=1,nz_sub-1
-    do j=1,ny_sub-1
-    do i=1,nx_sub-1
-        write(myrank,'(3D14.6,1E22.14)') X_sub(i), Y_sub(j), Z_sub(k), theta_sub(i,j,k)
+    ! do k=1,nz_sub-1
+    ! do j=1,ny_sub-1
+    ! do i=1,nx_sub-1
+    !     write(myrank,'(3D14.6,1E22.14)') X_sub(i), Y_sub(j), Z_sub(k), theta_sub(i,j,k)
+    ! enddo
+    ! enddo
+    ! enddo
+
+    ! close(myrank)
+
+    ! Single file IO - process 0 gathers all results from other variables by using derived datatypes.
+    allocate(nxm_sub_cnt(0:comm_1d_x%nprocs-1), nxm_sub_disp(0:comm_1d_x%nprocs-1))
+    allocate(nym_sub_cnt(0:comm_1d_y%nprocs-1), nym_sub_disp(0:comm_1d_y%nprocs-1))
+    allocate(nzm_sub_cnt(0:comm_1d_z%nprocs-1), nzm_sub_disp(0:comm_1d_z%nprocs-1))
+    allocate(ddtype_data_write_recv(0:nprocs-1))
+    allocate(request_recv(0:nprocs-1))
+    allocate(theta_all(1:nxm,1:nym,1:nzm))
+    theta_all(:,:,:) = 0.0d0
+
+    ! Building derived datatype for single file IO using the post assembly IO.
+    ! Derived datatype for sending data, excluding ghostcells.
+    sizes    = (/nx_sub+1,ny_sub+1,nz_sub+1/)
+    subsizes = (/nx_sub-1,ny_sub-1,nz_sub-1/)
+    starts   = (/1,      1,      1/)
+
+    call MPI_Type_create_subarray(3, sizes, subsizes, starts, MPI_ORDER_FORTRAN,  &
+                                 MPI_DOUBLE_PRECISION, ddtype_data_write_send, ierr)
+    call MPI_Type_commit( ddtype_data_write_send, ierr)
+
+    ! Derived datatype for receiving data and assigning the local data array in the global array for all MPI processes.
+    allocate( cart_coord(0:2,0:nprocs-1) )
+    do i = 0, nprocs-1
+        call MPI_Cart_coords(mpi_world_cart, i, 3, cart_coord(:,i), ierr )
     enddo
+
+    call MPI_Allgather(nx_sub, 1, MPI_INTEGER, nxm_sub_cnt,1, MPI_INTEGER, comm_1d_x%mpi_comm, ierr)
+    nxm_sub_cnt(:) = nxm_sub_cnt(:) - 1
+    call MPI_Allgather(ny_sub, 1, MPI_INTEGER, nym_sub_cnt,1, MPI_INTEGER, comm_1d_y%mpi_comm, ierr)
+    nym_sub_cnt(:) = nym_sub_cnt(:) - 1
+    call MPI_Allgather(nz_sub, 1, MPI_INTEGER, nzm_sub_cnt,1, MPI_INTEGER, comm_1d_z%mpi_comm, ierr)
+    nzm_sub_cnt(:) = nzm_sub_cnt(:) - 1
+
+    nxm_sub_disp(0) = 0
+    do i = 1, comm_1d_x%nprocs-1
+        nxm_sub_disp(i)=sum(nxm_sub_cnt(0:i-1))
     enddo
+
+    nym_sub_disp(0) = 0
+    do i = 1, comm_1d_y%nprocs-1
+        nym_sub_disp(i)=sum(nym_sub_cnt(0:i-1))
     enddo
 
-    close(myrank)
+    nzm_sub_disp(0) = 0
+    do i = 1, comm_1d_z%nprocs-1
+        nzm_sub_disp(i)=sum(nzm_sub_cnt(0:i-1))
+    enddo
 
-    ! ! Single file IO - process 0 gathers all results from other variables by using derived datatypes.
-    ! allocate(nxm_sub_cnt(0:comm_1d_x%nprocs-1), nxm_sub_disp(0:comm_1d_x%nprocs-1))
-    ! allocate(nym_sub_cnt(0:comm_1d_y%nprocs-1), nym_sub_disp(0:comm_1d_y%nprocs-1))
-    ! allocate(nzm_sub_cnt(0:comm_1d_z%nprocs-1), nzm_sub_disp(0:comm_1d_z%nprocs-1))
-    ! allocate(ddtype_data_write_recv(0:nprocs-1))
-    ! allocate(request_recv(0:nprocs-1))
-    ! allocate(theta_all(1:nxm,1:nym,1:nzm))
-    ! theta_all(:,:,:) = 0.0d0
+    ! Derived datatypes for every process are required for receiving data.
+    do i = 0, nprocs-1
+        sizes    = (/nxm,    nym,    nzm/)
+        subsizes = (/nxm_sub_cnt(cart_coord(0,i)), nym_sub_cnt(cart_coord(1,i)), nzm_sub_cnt(cart_coord(2,i))/)
+        starts   = (/nxm_sub_disp(cart_coord(0,i)), nym_sub_disp(cart_coord(1,i)), nzm_sub_disp(cart_coord(2,i))/)
 
-    ! ! Building derived datatype for single file IO using the post assembly IO.
-    ! ! Derived datatype for sending data, excluding ghostcells.
-    ! sizes    = (/nx_sub+1,ny_sub+1,nz_sub+1/)
-    ! subsizes = (/nx_sub-1,ny_sub-1,nz_sub-1/)
-    ! starts   = (/1,      1,      1/)
+        call MPI_Type_create_subarray(3, sizes, subsizes, starts, MPI_ORDER_FORTRAN, &
+                                      MPI_DOUBLE_PRECISION, ddtype_data_write_recv(i), ierr)
+        call MPI_Type_commit( ddtype_data_write_recv(i), ierr)
+    enddo
 
-    ! call MPI_Type_create_subarray(3, sizes, subsizes, starts, MPI_ORDER_FORTRAN,  &
-    !                              MPI_DOUBLE_PRECISION, ddtype_data_write_send, ierr)
-    ! call MPI_Type_commit( ddtype_data_write_send, ierr)
+    ! Each rank sends data to process 0 using DDT.
+    call MPI_Isend(theta_sub(0,0,0), 1, ddtype_data_write_send, 0, 101, MPI_COMM_WORLD, request_send, ierr)
 
-    ! ! Derived datatype for receiving data and assigning the local data array in the global array for all MPI processes.
-    ! allocate( cart_coord(0:2,0:nprocs-1) )
-    ! do i = 0, nprocs-1
-    !     call MPI_Cart_coords(mpi_world_cart, i, 3, cart_coord(:,i), ierr )
-    ! enddo
+    ! Process 0 receives data from all ranks.
+    if(myrank == 0 ) then
+        do i = 0, nprocs-1
+            call MPI_Irecv(theta_all(1,1,1), 1, ddtype_data_write_recv(i), i, 101, MPI_COMM_WORLD, request_recv(i), ierr)
+        enddo
+    endif
 
-    ! call MPI_Allgather(nx_sub, 1, MPI_INTEGER, nxm_sub_cnt,1, MPI_INTEGER, comm_1d_x%mpi_comm, ierr)
-    ! nxm_sub_cnt(:) = nxm_sub_cnt(:) - 1
-    ! call MPI_Allgather(ny_sub, 1, MPI_INTEGER, nym_sub_cnt,1, MPI_INTEGER, comm_1d_y%mpi_comm, ierr)
-    ! nym_sub_cnt(:) = nym_sub_cnt(:) - 1
-    ! call MPI_Allgather(nz_sub, 1, MPI_INTEGER, nzm_sub_cnt,1, MPI_INTEGER, comm_1d_z%mpi_comm, ierr)
-    ! nzm_sub_cnt(:) = nzm_sub_cnt(:) - 1
+    call MPI_Wait(request_send, status, ierr)
+    if(myrank == 0 ) then
+        call MPI_Waitall(nprocs, request_recv, MPI_STATUSES_IGNORE, ierr)
+    endif
 
-    ! nxm_sub_disp(0) = 0
-    ! do i = 1, comm_1d_x%nprocs-1
-    !     nxm_sub_disp(i)=sum(nxm_sub_cnt(0:i-1))
-    ! enddo
+    ! Write gathered data to a single file.
+    if(myrank == 0) then
+        open(unit=myrank,file="T_field_all.plt")
+        write(myrank,*) 'VARIABLES="X","Y","Z","THETA"'
+        write(myrank,*) 'zone t="',1,'"','i=',nxm,'j=',nym,'k=',nzm
+        do k = 1, nzm
+            do j = 1, nym
+                do i = 1, nxm
+                    write(myrank,'(3D14.6,1E22.14)') dx*dble(i-1),dy*dble(j-1),dz*dble(k-1),theta_all(i,j,k)
+                enddo
+            enddo
+        enddo
+        close(myrank)
+    endif
 
-    ! nym_sub_disp(0) = 0
-    ! do i = 1, comm_1d_y%nprocs-1
-    !     nym_sub_disp(i)=sum(nym_sub_cnt(0:i-1))
-    ! enddo
-
-    ! nzm_sub_disp(0) = 0
-    ! do i = 1, comm_1d_z%nprocs-1
-    !     nzm_sub_disp(i)=sum(nzm_sub_cnt(0:i-1))
-    ! enddo
-
-    ! ! Derived datatypes for every process are required for receiving data.
-    ! do i = 0, nprocs-1
-    !     sizes    = (/nxm,    nym,    nzm/)
-    !     subsizes = (/nxm_sub_cnt(cart_coord(0,i)), nym_sub_cnt(cart_coord(1,i)), nzm_sub_cnt(cart_coord(2,i))/)
-    !     starts   = (/nxm_sub_disp(cart_coord(0,i)), nym_sub_disp(cart_coord(1,i)), nzm_sub_disp(cart_coord(2,i))/)
-
-    !     call MPI_Type_create_subarray(3, sizes, subsizes, starts, MPI_ORDER_FORTRAN, &
-    !                                   MPI_DOUBLE_PRECISION, ddtype_data_write_recv(i), ierr)
-    !     call MPI_Type_commit( ddtype_data_write_recv(i), ierr)
-    ! enddo
-
-    ! ! Each rank sends data to process 0 using DDT.
-    ! call MPI_Isend(theta_sub(0,0,0), 1, ddtype_data_write_send, 0, 101, MPI_COMM_WORLD, request_send, ierr)
-
-    ! ! Process 0 receives data from all ranks.
-    ! if(myrank == 0 ) then
-    !     do i = 0, nprocs-1
-    !         call MPI_Irecv(theta_all(1,1,1), 1, ddtype_data_write_recv(i), i, 101, MPI_COMM_WORLD, request_recv(i), ierr)
-    !     enddo
-    ! endif
-
-    ! call MPI_Wait(request_send, status, ierr)
-    ! if(myrank == 0 ) then
-    !     call MPI_Waitall(nprocs, request_recv, MPI_STATUSES_IGNORE, ierr)
-    ! endif
-
-    ! ! Write gathered data to a single file.
-    ! if(myrank == 0) then
-    !     open(unit=myrank,file="T_field_all.dat")
-    !     do k = 1, nzm
-    !         do j = 1, nym
-    !             do i = 1, nxm
-    !                 write(myrank,'(3D14.6,1E22.14)') dx*dble(i-1),dy*dble(j-1),dz*dble(k-1),theta_all(i,j,k)
-    !             enddo
-    !         enddo
-    !     enddo
-    !     close(myrank)
-    ! endif
-
-    ! ! Process complete: free the datatypes and deallocate variables.
-    ! call MPI_Type_free(ddtype_data_write_send, ierr)
-    ! do i = 0, nprocs-1
-    !     call MPI_Type_free(ddtype_data_write_recv(i), ierr)
-    ! enddo
-    ! deallocate(theta_all)
-    ! deallocate(nxm_sub_cnt, nxm_sub_disp)
-    ! deallocate(nym_sub_cnt, nym_sub_disp)
-    ! deallocate(nzm_sub_cnt, nzm_sub_disp)
-    ! deallocate(ddtype_data_write_recv)
-    ! deallocate( cart_coord )
+    ! Process complete: free the datatypes and deallocate variables.
+    call MPI_Type_free(ddtype_data_write_send, ierr)
+    do i = 0, nprocs-1
+        call MPI_Type_free(ddtype_data_write_recv(i), ierr)
+    enddo
+    deallocate(theta_all)
+    deallocate(nxm_sub_cnt, nxm_sub_disp)
+    deallocate(nym_sub_cnt, nym_sub_disp)
+    deallocate(nzm_sub_cnt, nzm_sub_disp)
+    deallocate(ddtype_data_write_recv)
+    deallocate( cart_coord )
 
 end subroutine field_file_write

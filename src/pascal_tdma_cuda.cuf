@@ -121,7 +121,6 @@ module PaScaL_TDMA_cuda
         integer :: block_in_x_pascal, block_in_y_pascal, block_rt_in_x_pascal
         integer :: i, ierr
         integer :: ista, iend                               ! First and last indices of assigned range in many tridiagonal systems of equations 
-        integer :: bigsize(3), subsize(3), start(3)         ! Temporary variables of derived data type (DDT)
         integer :: n_sys_rd, n_row_rd                       ! Dimensions of many reduced tridiagonal systems
         integer :: n_sys_rt, n_row_rt                       ! Dimensions of many reduced tridiagonal systems after transpose
 
@@ -138,10 +137,10 @@ module PaScaL_TDMA_cuda
         n_row_rt = n_row_rd*nprocs
         
         ! Assign plan variables and allocate coefficient arrays.
-        plan%n_sys_rt = n_sys_rt
-        plan%n_row_rt = n_row_rt
-        plan%n_row_rd = n_row_rd
-        plan%ptdma_world = mpi_world
+        plan%n_sys_rt     = n_sys_rt
+        plan%n_row_rt     = n_row_rt
+        plan%n_row_rd     = n_row_rd
+        plan%ptdma_world  = mpi_world
         plan%ptdma_nprocs = nprocs
     
         if(plan%ptdma_nprocs.eq.1) then
@@ -613,6 +612,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine tdma_cycl_many_cuda
 
+    ! For alltoall subroutines
     subroutine alltoall_kforward (umpi, uimpi, n1, n2, n3, mpi_comm, nprocs, sendbuf, recvbuf, blocks, threads)
         double precision, device, intent(in ) ::  umpi(1:n1,1:n2,1:n3)
         double precision, device, intent(out) :: uimpi(1:(n1/nprocs),1:n2,1:(n3*nprocs))
@@ -707,7 +707,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine alltoall_kforward_detach
 
-    attributes(global) subroutine alltoall_kforward_unite (recvbuf,  uimpi, n1blksize, n1, n2, n3, nprocs)
+    attributes(global) subroutine alltoall_kforward_unite(recvbuf,  uimpi, n1blksize, n1, n2, n3, nprocs)
 
         implicit none
 
@@ -760,7 +760,7 @@ module PaScaL_TDMA_cuda
 
     end subroutine alltoall_kbackward_detach
 
-    attributes(global) subroutine alltoall_kbackward_unite (recvbuf,  umpi, n1blksize, n1, n2, n3, nprocs)
+    attributes(global) subroutine alltoall_kbackward_unite(recvbuf,  umpi, n1blksize, n1, n2, n3, nprocs)
 
         implicit none
 
