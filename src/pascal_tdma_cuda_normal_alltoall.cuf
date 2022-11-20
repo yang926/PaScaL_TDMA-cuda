@@ -109,7 +109,6 @@ module PaScaL_TDMA_cuda
 
     end type tdma_alltoall_plan_many_cuda
 
-
     public  :: PaScaL_TDMA_plan_many_create_cuda
     public  :: PaScaL_TDMA_plan_many_destroy_cuda
     public  :: PaScaL_TDMA_many_solve_cuda
