@@ -24,8 +24,14 @@ clean:
 	rm -rf core.*;
 	rm -rf *.plt;
 
+rm:
+	rm -rf *_t1;
+	rm -rf Output.*;
+	rm -rf core.*;
+	rm -rf *.plt;
+
 exe:
-	mpirun ./run/a.out
+	mpirun -np 2 ./run/a.out
 
 nvtx:
 #	CUDA_VISIBLE_DEVICES=0 nsys profile --stats=true --trace=nvtx,cuda --cuda-memory-usage=true  --force-overwrite true -o Output mpirun -np 1 ./a.out

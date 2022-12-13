@@ -356,10 +356,10 @@ contains
             enddo
         else
             ierr = cudaStreamSynchronize()
-            call MPI_Isend(sbuf_z0, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%west_rank, 555, comm_1d_z%mpi_comm, request(9 ), ierr)
-            call MPI_Irecv(rbuf_z1, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%east_rank, 555, comm_1d_z%mpi_comm, request(10), ierr)
-            call MPI_Irecv(rbuf_z0, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%west_rank, 666, comm_1d_z%mpi_comm, request(11), ierr)
-            call MPI_Isend(sbuf_z1, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%east_rank, 666, comm_1d_z%mpi_comm, request(12), ierr)
+            call MPI_Isend(sbuf_z0, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%west_rank, 555, comm_1d_z%mpi_comm, request(1), ierr)
+            call MPI_Irecv(rbuf_z1, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%east_rank, 555, comm_1d_z%mpi_comm, request(2), ierr)
+            call MPI_Irecv(rbuf_z0, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%west_rank, 666, comm_1d_z%mpi_comm, request(3), ierr)
+            call MPI_Isend(sbuf_z1, (nx_sub+1)*(ny_sub+1), MPI_DOUBLE_PRECISION, comm_1d_z%east_rank, 666, comm_1d_z%mpi_comm, request(4), ierr)
             call MPI_Waitall(4, request, MPI_STATUSES_IGNORE, ierr)
         endif
 
