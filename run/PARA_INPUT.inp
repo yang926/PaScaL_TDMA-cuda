@@ -1,13 +1,13 @@
 &meshes
-nx = 64
-ny = 64
+nx = 128
+ny = 256
 nz = 64
 /
 
 &procs
-npx = 1
-npy = 1
-npz = 2
+npx = 2
+npy = 2
+npz = 1
 /
 
 &time

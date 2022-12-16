@@ -5,14 +5,15 @@
 !>              in a unit cube domain applied with the boundary conditions of vertically constant temperature 
 !>              and horizontally periodic boundaries.
 !> @author      
-!>              - Kiha Kim (k-kiha@yonsei.ac.kr), Department of Computational Science & Engineering, Yonsei University
+!>              - Mingyu Yang (yang926@yonsei.ac.kr), Multi-Physics Modeling and Computation Lab., Yonsei University
 !>              - Ji-Hoon Kang (jhkang@kisti.re.kr), Korea Institute of Science and Technology Information
+!>              - Ki-Ha Kim (k-kiha@yonsei.ac.kr), Department of Computational Science & Engineering, Yonsei University
 !>              - Jung-Il Choi (jic@yonsei.ac.kr), Department of Computational Science & Engineering, Yonsei University
 !>
-!> @date        June 2019
-!> @version     1.0
+!> @date        Decomber 2022
+!> @version     2.0
 !> @par         Copyright
-!>              Copyright (c) 2019 Kiha Kim and Jung-Il choi, Yonsei University and 
+!>              Copyright (c) 2022 Mingyu Yang, Ki-Ha Kim and Jung-Il choi, Yonsei University and 
 !>              Ji-Hoon Kang, Korea Institute of Science and Technology Information, All rights reserved.
 !> @par         License     
 !>              This project is release under the terms of the MIT License (see LICENSE in )
@@ -87,7 +88,7 @@ program main
     if(myrank==0) write(*,*) '[Main] Solving the 3D heat equation! '
     
     ! call solve_theta_plan_many(theta_sub)
-     call solve_theta_plan_many_cuda(theta_sub)
+    call solve_theta_plan_many_cuda(theta_sub)
  
     if(myrank==0) write(*,*) '[Main] Solving the 3D heat equation complete! '
 
@@ -216,19 +217,21 @@ subroutine field_file_write(myrank, nprocs, theta_sub)
         call MPI_Type_commit( ddtype_data_write_recv(i), ierr)
     enddo
 
-    ! Each rank sends data to process 0 using DDT.
-    call MPI_Isend(theta_sub(0,0,0), 1, ddtype_data_write_send, 0, 101, MPI_COMM_WORLD, request_send, ierr)
-
-    ! Process 0 receives data from all ranks.
+    ! Rank 0 receives data from all ranks except myself.
     if(myrank == 0 ) then
-        do i = 0, nprocs-1
-            call MPI_Irecv(theta_all(1,1,1), 1, ddtype_data_write_recv(i), i, 101, MPI_COMM_WORLD, request_recv(i), ierr)
+        do i = 1, nprocs-1
+            call MPI_Recv(theta_all(1,1,1), 1, ddtype_data_write_recv(i), i, i, MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
         enddo
-    endif
-
-    call MPI_Wait(request_send, status, ierr)
-    if(myrank == 0 ) then
-        call MPI_Waitall(nprocs, request_recv, MPI_STATUSES_IGNORE, ierr)
+        do k = 1, nz_sub-1
+            do j = 1, ny_sub-1
+                do i = 1, nx_sub-1
+                    theta_all(i,j,k) = theta_sub(i,j,k)
+                enddo
+            enddo
+        enddo
+    ! Each rank except rank 0 sends data to rank 0 using DDT.
+    else
+        call MPI_Send(theta_sub(0,0,0), 1, ddtype_data_write_send, 0, myrank, MPI_COMM_WORLD, ierr)
     endif
 
     ! Write gathered data to a single file.

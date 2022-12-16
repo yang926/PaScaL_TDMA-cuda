@@ -9,7 +9,7 @@ TDMAS = $(OBJDIR)/tdmas_cuda.o #$(OBJDIR)/tdmas.o
 RANGE = $(OBJDIR)/para_range.o
 PTDMA = $(OBJDIR)/pascal_tdma_cuda.o #$(OBJDIR)/pascal_tdma.o 
 
-OBJS   = $(NVTX) $(TDMAS) $(RANGE) $(PTDMA)
+OBJS   = $(NVTX) $(RANGE) $(TDMAS) $(PTDMA)
 
 all: $(LIB) inc
 
@@ -29,6 +29,6 @@ $(OBJDIR)/%.o:$(OBJDIR)/%.mod
 %(PTDMA)	 : %(RANGE) %(TDMAS)
 
 clean:
-	rm -rf ../lib ../include *__genmod.f90 $(LIB)
+	rm -rf ../lib ../include *__genmod.f90 $(LIB) *.mod
 	rm -rf $(OBJDIR)
 

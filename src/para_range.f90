@@ -2,14 +2,15 @@
 !> @file        para_range.f90
 !> @brief       The para_range function assigns the computing range to each MPI process.
 !> @author      
-!>              - Kiha Kim (k-kiha@yonsei.ac.kr), Department of Computational Science & Engineering, Yonsei University
+!>              - Mingyu Yang (yang926@yonsei.ac.kr), Multi-Physics Modeling and Computation Lab., Yonsei University
 !>              - Ji-Hoon Kang (jhkang@kisti.re.kr), Korea Institute of Science and Technology Information
+!>              - Ki-Ha Kim (k-kiha@yonsei.ac.kr), Department of Computational Science & Engineering, Yonsei University
 !>              - Jung-Il Choi (jic@yonsei.ac.kr), Department of Computational Science & Engineering, Yonsei University
 !>
-!> @date        June 2019
-!> @version     1.0
+!> @date        Decomber 2022
+!> @version     2.0
 !> @par         Copyright
-!>              Copyright (c) 2019 Kiha Kim and Jung-Il choi, Yonsei University and 
+!>              Copyright (c) 2022 Mingyu Yang, Ki-Ha Kim and Jung-Il choi, Yonsei University and 
 !>              Ji-Hoon Kang, Korea Institute of Science and Technology Information, All rights reserved.
 !> @par         License     
 !>              This project is release under the terms of the MIT License (see LICENSE in )
