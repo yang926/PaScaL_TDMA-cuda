@@ -35,16 +35,16 @@ program main
     
     implicit none
  
-    integer :: nprocs, myrank, local_rank   ! Number of MPI processes and rank ID in MPI_COMM_WORLD
+    integer :: nprocs, myrank, local_rank   ! Number of MPI processes and rank ID in MPI_COMM_WORLD.
     integer :: ierr, pvd
     integer :: istat, nDevices
-    double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved
+    double precision, allocatable, dimension(:, :, :) :: theta_sub  ! Main 3-D variable to be solved.
     
     call MPI_INIT(ierr)
     call MPI_Comm_size( MPI_COMM_WORLD, nprocs, ierr)
     call MPI_Comm_rank( MPI_COMM_WORLD, myrank, ierr)
     
-    istat = cudaGetDeviceCount(nDevices) ! Count only GPUs in single node
+    istat = cudaGetDeviceCount(nDevices) ! Count only GPUs in single node.
     local_rank = mod(myrank,nDevices) ! and devide it for GPU affinity.
     istat = cudaSetDevice(local_rank)
     !write(*,*) "# of CPU and GPU check", myrank, local_rank

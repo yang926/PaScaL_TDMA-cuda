@@ -7,11 +7,11 @@ nz = 64
 &procs
 npx = 2
 npy = 2
-npz = 1
+npz = 2
 /
 
 &time
-Tmax = 10
+Tmax = 10000
 /
 
 &threads
